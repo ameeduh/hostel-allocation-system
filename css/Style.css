@@ -488,3 +488,28 @@ button:hover {
         grid-template-columns: 1fr;
     }
 }
+/* Force horizontal cards on dashboards */
+.actions-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+    flex-direction: row !important;
+    gap: 25px !important;
+}
+
+.action-card {
+    width: 100%;
+    margin: 0 !important;
+}
+.actions-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+}
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 15px 0;
+}
+.checkbox-group input {
+    width: auto;
+}
