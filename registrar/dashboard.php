@@ -1,6 +1,6 @@
 <?php
 session_start();
-if(!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
+if(!isset($_SESSION['user_id']) || $_SESSION['role'] != 'registrar') {
     header("Location: ../login.php");
     exit();
 }
@@ -18,7 +18,7 @@ $userData = $result->fetch_assoc();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - Hostel System</title>
+    <title>Registrar Dashboard - Hostel System</title>
     <link rel="stylesheet" href="../css/style.css?v=22">
     <style>
         * {
@@ -142,9 +142,8 @@ $userData = $result->fetch_assoc();
     <div class="dashboard-container">
         <!-- Top Buttons Row -->
         <div class="buttons-row">
-            <a href="rooms.php" class="nav-btn">Manage Rooms</a>
-            <a href="users.php" class="nav-btn">Manage Users</a>
-            <a href="reports.php" class="nav-btn">Reports</a>
+            <a href="pending.php" class="nav-btn">Pending Students</a>
+            <a href="approved.php" class="nav-btn">Approved Students</a>
             <a href="../logout.php" class="nav-btn logout-btn">Logout</a>
         </div>
 

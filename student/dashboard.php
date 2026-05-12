@@ -1,7 +1,7 @@
 <?php
 session_start();
 if(!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
-    header("Location: ../index.php");
+    header("Location: ../login.php");
     exit();
 }
 
@@ -10,60 +10,9 @@ require_once '../config/database.php';
 $db = new Database();
 $studentID = $_SESSION['studentID'];
 
-$sql = "SELECT s.*, u.name, u.phone, u.email 
-        FROM students s 
-        JOIN users u ON s.userID = u.userID 
-        WHERE s.studentID = $studentID";
+$sql = "SELECT u.name FROM students s JOIN users u ON s.userID = u.userID WHERE s.studentID = $studentID";
 $result = $db->query($sql);
 $studentData = $result->fetch_assoc();
-
-$hasDetails = ($studentData['year'] > 0 && $studentData['gender'] != '' && $studentData['guardian_name'] != '');
-
-if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
-    $year = $_POST['year'];
-    $phone = $_POST['phone'];
-    $email = $_POST['email'];
-    $gender = $_POST['gender'];
-    $dob = $_POST['dob'];
-    $address = $_POST['address'];
-    $medical_condition = $_POST['medical_condition'];
-    $medical_condition_details = ($medical_condition == 'yes') ? $_POST['medical_condition_details'] : '';
-    $guardian_name = $_POST['guardian_name'];
-    $guardian_relationship = $_POST['guardian_relationship'];
-    $guardian_phone = $_POST['guardian_phone'];
-    $agreement = isset($_POST['agreement']) ? 1 : 0;
-    
-    // Validate agreement
-    if($agreement != 1) {
-        header("Location: dashboard.php?error=1");
-        exit();
-    }
-    
-    $sql1 = "UPDATE students SET 
-                year = '$year', 
-                gender = '$gender', 
-                dob = '$dob', 
-                address = '$address',
-                medical_condition = '$medical_condition',
-                medical_condition_details = '$medical_condition_details',
-                guardian_name = '$guardian_name',
-                guardian_relationship = '$guardian_relationship',
-                guardian_phone = '$guardian_phone',
-                agreement_confirmed = 1,
-                applicationStatus = 'pending'
-            WHERE studentID = $studentID";
-    $db->query($sql1);
-    
-    $sql2 = "UPDATE users SET phone = '$phone', email = '$email' WHERE userID = {$_SESSION['user_id']}";
-    $db->query($sql2);
-    
-    header("Location: dashboard.php?success=1");
-    exit();
-}
-
-$showForm = isset($_GET['show_form']);
-$success = isset($_GET['success']);
-$error = isset($_GET['error']);
 ?>
 
 <!DOCTYPE html>
@@ -71,150 +20,154 @@ $error = isset($_GET['error']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Portal - Hostel System</title>
-    <link rel="stylesheet" href="../css/style.css?v=8">
+    <title>Student Dashboard - Hostel System</title>
+    <link rel="stylesheet" href="../css/style.css?v=22">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        /* Background Image for body */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('../images/hans-beds-182964_1920.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: -2;
+        }
+
+        /* Dark overlay for readability */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: -1;
+        }
+
+        .dashboard-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        /* Top Buttons Row */
+        .buttons-row {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+
+        .nav-btn {
+            background-color: #8B4513;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background-color 0.3s;
+        }
+
+        .nav-btn:hover {
+            background-color: #A0522D;
+        }
+
+        .logout-btn {
+            background-color: #000000;
+        }
+
+        .logout-btn:hover {
+            background-color: #333333;
+        }
+
+        /* Divider */
+        .divider {
+            border: none;
+            height: 2px;
+            background: linear-gradient(90deg, #FFD700, #8B4513, #FFD700);
+            margin-bottom: 40px;
+        }
+
+        /* Welcome Section */
+        .welcome-section {
+            text-align: center;
+            margin-bottom: 50px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .welcome-section h2 {
+            color: #8B4513;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .welcome-section p {
+            color: #555;
+            font-size: 16px;
+        }
+
+        /* Instruction Message */
+        .instruction {
+            text-align: center;
+            color: white;
+            font-size: 16px;
+            margin-top: 50px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+    </style>
 </head>
 <body>
-    <div class="dashboard">
-        <div class="sidebar">
-            <div class="logo">
-                <h2>Hostel</h2>
-                <p>Allocation System</p>
-            </div>
-            <div class="sidebar-footer">
-                <a href="../logout.php" class="logout-link">Logout</a>
-            </div>
+    <div class="dashboard-container">
+        <!-- Top Buttons Row -->
+        <div class="buttons-row">
+            <a href="details.php" class="nav-btn">Complete Details</a>
+            <a href="approval.php" class="nav-btn">Approval Status</a>
+            <a href="room.php" class="nav-btn">Room Details</a>
+            <a href="../logout.php" class="nav-btn logout-btn">Logout</a>
         </div>
 
-        <div class="main-content">
-            <div class="top-header">
-                <h1>Welcome, <?php echo $studentData['name']; ?></h1>
-                <p>Reg: <?php echo $_SESSION['username']; ?></p>
-            </div>
+        <!-- Divider Line -->
+        <hr class="divider">
 
-            <?php if($success): ?>
-                <div class="success-message">Details saved successfully!</div>
-            <?php endif; ?>
-            <?php if($error): ?>
-                <div class="error-message">Please confirm that all information is correct.</div>
-            <?php endif; ?>
+        <!-- Welcome Section -->
+        <div class="welcome-section">
+            <h2>Welcome, <?php echo $studentData['name']; ?></h2>
+            <p>Registration Number: <?php echo $_SESSION['username']; ?></p>
+        </div>
 
-            <?php if(!$hasDetails && !$showForm): ?>
-                <div class="action-card" onclick="window.location.href='?show_form=1'">
-                    <h3>Complete Your Details</h3>
-                    <p>Fill in your personal information</p>
-                </div>
-            <?php endif; ?>
-
-            <?php if($hasDetails): ?>
-                <div class="action-card" onclick="window.location.href='approval_status.php'">
-                    <h3>Approval Status</h3>
-                </div>
-                <div class="action-card" onclick="window.location.href='room_details.php'">
-                    <h3>Room Details</h3>
-                </div>
-            <?php endif; ?>
-
-            <?php if($showForm): ?>
-                <div class="content-card">
-                    <h2>Complete Your Details</h2>
-                    <form method="POST">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Year of Study</label>
-                                <select name="year" required>
-                                    <option value="">Select Year</option>
-                                    <option value="1">1st Year</option>
-                                    <option value="2">2nd Year</option>
-                                    <option value="3">3rd Year</option>
-                                    <option value="4">4th Year</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Date of Birth</label>
-                                <input type="date" name="dob" required>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Gender</label>
-                                <select name="gender" required>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Phone Number</label>
-                                <input type="tel" name="phone" required>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Email Address</label>
-                                <input type="email" name="email" required>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Home Address</label>
-                            <textarea name="address" rows="2" required></textarea>
-                        </div>
-
-                        <h3>Medical Information</h3>
-                        <div class="form-group">
-                            <label>Any medical conditions?</label>
-                            <select name="medical_condition" id="medical_condition" onchange="toggleMedical()">
-                                <option value="no">No</option>
-                                <option value="yes">Yes</option>
-                            </select>
-                        </div>
-                        <div id="medical_div" style="display:none;">
-                            <div class="form-group">
-                                <label>Please specify</label>
-                                <textarea name="medical_condition_details" rows="2" placeholder="e.g., Asthma, Diabetes, Allergies"></textarea>
-                            </div>
-                        </div>
-
-                        <h3>Emergency Contact</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Guardian Name</label>
-                                <input type="text" name="guardian_name" required>
-                            </div>
-                            <div class="form-group">
-                                <label>Relationship</label>
-                                <select name="guardian_relationship" required>
-                                    <option value="">Select</option>
-                                    <option value="Father">Father</option>
-                                    <option value="Mother">Mother</option>
-                                    <option value="Brother">Brother</option>
-                                    <option value="Sister">Sister</option>
-                                    <option value="Guardian">Guardian</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Guardian Phone</label>
-                            <input type="tel" name="guardian_phone" required>
-                        </div>
-
-                        <div class="checkbox-group">
-                            <input type="checkbox" name="agreement" required>
-                            <label>I confirm that all information provided is correct.</label>
-                        </div>
-
-                        <button type="submit" name="save_details" class="submit-btn">Submit Application</button>
-                    </form>
-                </div>
-            <?php endif; ?>
+        <!-- Instruction -->
+        <div class="instruction">
+            <p>Click on any button above to get started</p>
         </div>
     </div>
-
-    <script>
-        function toggleMedical() {
-            var select = document.getElementById('medical_condition');
-            var div = document.getElementById('medical_div');
-            div.style.display = select.value == 'yes' ? 'block' : 'none';
-        }
-    </script>
 </body>
 </html>

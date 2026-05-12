@@ -1,16 +1,16 @@
 <?php
 require_once 'User.php';
 
-class Accountant extends User {
-    private $accountantID;
-    private $department;
+class Registrar extends User {
+    private $registrarID;
+    private $office;
     
     public function login($username, $password) {
         $username = $this->db->escape($username);
         
-        $sql = "SELECT a.*, u.name, u.email, u.phone 
-                FROM accountants a 
-                JOIN users u ON a.userID = u.userID 
+        $sql = "SELECT r.*, u.name, u.email, u.phone 
+                FROM registrars r 
+                JOIN users u ON r.userID = u.userID 
                 WHERE u.username = '$username'";
         $result = $this->db->query($sql);
         
@@ -22,9 +22,9 @@ class Accountant extends User {
                 $this->name = $user['name'];
                 $this->email = $user['email'];
                 $this->phone = $user['phone'];
-                $this->role = 'accounts';
-                $this->accountantID = $user['accountantID'];
-                $this->department = $user['department'];
+                $this->role = 'registrar';
+                $this->registrarID = $user['registrarID'];
+                $this->office = $user['office'];
                 
                 $_SESSION['user_id'] = $this->userID;
                 $_SESSION['username'] = $this->username;
@@ -38,12 +38,11 @@ class Accountant extends User {
     }
     
     public function viewPendingStudents() {
-        // Only show students approved by Registrar and pending fee verification
         $sql = "SELECT s.*, u.name 
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
-                WHERE s.registrar_status = 'approved' 
-                AND s.applicationStatus = 'pending'";
+                WHERE s.registrar_status IS NULL OR s.registrar_status = 'pending'
+                ORDER BY s.studentID";
         $result = $this->db->query($sql);
         if ($result && $result->num_rows > 0) {
             return $result->fetch_all(MYSQLI_ASSOC);
@@ -51,23 +50,23 @@ class Accountant extends User {
         return [];
     }
     
-    public function verifyFees($studentID) {
-        $sql = "UPDATE students SET applicationStatus = 'approved' WHERE studentID = $studentID";
+    public function approveStudent($studentID) {
+        $sql = "UPDATE students SET registrar_status = 'approved' WHERE studentID = $studentID";
         return $this->db->query($sql);
     }
     
-    public function rejectStudent($studentID) {
-        $sql = "UPDATE students SET applicationStatus = 'rejected' WHERE studentID = $studentID";
+    public function rejectStudent($studentID, $reason) {
+        $reason = $this->db->escape($reason);
+        $sql = "UPDATE students SET registrar_status = 'rejected', registrar_reason = '$reason' WHERE studentID = $studentID";
         return $this->db->query($sql);
     }
     
-    public function viewVerifiedStudents() {
-        // Only show students approved by Registrar AND approved by Accountant
+    public function viewApprovedStudents() {
         $sql = "SELECT s.*, u.name 
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
-                WHERE s.registrar_status = 'approved' 
-                AND s.applicationStatus = 'approved'";
+                WHERE s.registrar_status = 'approved'
+                ORDER BY s.studentID";
         $result = $this->db->query($sql);
         if ($result && $result->num_rows > 0) {
             return $result->fetch_all(MYSQLI_ASSOC);
@@ -75,7 +74,7 @@ class Accountant extends User {
         return [];
     }
     
-    public function getAccountantID() { return $this->accountantID; }
-    public function getDepartment() { return $this->department; }
+    public function getRegistrarID() { return $this->registrarID; }
+    public function getOffice() { return $this->office; }
 }
 ?>

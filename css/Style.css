@@ -513,3 +513,126 @@ button:hover {
 .checkbox-group input {
     width: auto;
 }
+/* Sidebar Menu - Clean without extra backgrounds */
+.sidebar-menu {
+    flex: 1;
+    padding: 20px 0;
+}
+
+.menu-item {
+    display: block;
+    padding: 12px 25px;
+    color: #FFFFFF;
+    text-decoration: none;
+    font-size: 16px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.menu-item:hover {
+    background-color: rgba(255,255,255,0.1);
+}
+
+.menu-item.active {
+    background-color: #FFD700;
+    color: #8B4513;
+}
+
+/* Remove any extra backgrounds */
+.sidebar {
+    background-color: #8B4513;
+}
+
+.logout-link {
+    color: #FFD700;
+}
+/* Simple Page (No Sidebar) */
+.simple-page {
+    max-width: 600px;
+    margin: 50px auto;
+    padding: 20px;
+}
+
+.back-link {
+    margin-bottom: 20px;
+}
+
+.back-btn {
+    display: inline-block;
+    background-color: #8B4513;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 5px;
+    text-decoration: none;
+}
+
+.back-btn:hover {
+    background-color: #A0522D;
+}
+
+.form-container-simple {
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    border-top: 5px solid #FFD700;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+}
+
+.form-container-simple h1 {
+    color: #8B4513;
+    margin-bottom: 20px;
+}
+
+.picture-area {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.dashboard-image {
+    max-width: 100%;
+    border-radius: 10px;
+}
+/* Full Page Container - No Sidebar, Full Width */
+.full-page-container {
+    width: 100%;
+    min-height: 100vh;
+    background-color: #F5F5F5;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 40px;
+}
+
+.full-content-card {
+    background-color: white;
+    width: 100%;
+    max-width: 1200px;
+    border-radius: 10px;
+    border-top: 5px solid #FFD700;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    padding: 30px;
+}
+
+.full-content-card h1 {
+    color: #8B4513;
+    margin-bottom: 20px;
+    font-size: 28px;
+}
+
+.back-link-bottom {
+    margin-top: 30px;
+    text-align: right;
+}
+
+.back-btn {
+    display: inline-block;
+    background-color: #8B4513;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    text-decoration: none;
+}
+
+.back-btn:hover {
+    background-color: #A0522D;
+}

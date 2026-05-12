@@ -21,8 +21,8 @@ class Student extends User {
         
         if ($result && $result->num_rows == 1) {
             $user = $result->fetch_assoc();
-            // Verify hashed password
-            if (password_verify($password, $user['password'])) {
+            // Plain text password check (for 2003 and testing)
+            if ($password == $user['password']) {
                 $this->userID = $user['userID'];
                 $this->username = $user['regNumber'];
                 $this->name = $user['name'];
@@ -53,46 +53,27 @@ class Student extends User {
         $regNumber = $this->db->escape($regNumber);
         $name = $this->db->escape($name);
         
-        // Hash the password
-        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-        
         // Check if student already exists
         $checkSql = "SELECT * FROM students WHERE regNumber = '$regNumber'";
         $checkResult = $this->db->query($checkSql);
         
         if ($checkResult && $checkResult->num_rows > 0) {
-            return false; // Student already exists
+            return false;
         }
         
-        // Insert into users table
+        // Insert into users table with plain text password
         $sql1 = "INSERT INTO users (username, password, name, email, phone, role) 
-                 VALUES ('$regNumber', '$hashedPassword', '$name', '', '', 'student')";
+                 VALUES ('$regNumber', '$password', '$name', '', '', 'student')";
         
         if ($this->db->query($sql1)) {
             $userID = $this->db->getInsertId();
             
-            // Insert into students table
             $sql2 = "INSERT INTO students (userID, regNumber, program, year, applicationStatus, gender) 
                      VALUES ($userID, '$regNumber', '', 0, 'pending', '')";
             
             return $this->db->query($sql2);
         }
         return false;
-    }
-    
-    // After login, update student details (program, year, phone, gender)
-    public function updateDetails($program, $year, $phone, $gender) {
-        $program = $this->db->escape($program);
-        $year = (int)$year;
-        $phone = $this->db->escape($phone);
-        $gender = $this->db->escape($gender);
-        
-        $sql = "UPDATE students SET program = '$program', year = $year, gender = '$gender' 
-                WHERE studentID = {$this->studentID}";
-        $this->db->query($sql);
-        
-        $sql2 = "UPDATE users SET phone = '$phone' WHERE userID = {$this->userID}";
-        return $this->db->query($sql2);
     }
     
     public function viewStatus() {
