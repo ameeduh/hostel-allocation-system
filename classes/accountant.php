@@ -38,12 +38,10 @@ class Accountant extends User {
     }
     
     public function viewPendingStudents() {
-        // Only show students approved by Registrar and pending fee verification
         $sql = "SELECT s.*, u.name 
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
-                WHERE s.registrar_status = 'approved' 
-                AND s.applicationStatus = 'pending'";
+                WHERE s.applicationStatus = 'pending'";
         $result = $this->db->query($sql);
         if ($result && $result->num_rows > 0) {
             return $result->fetch_all(MYSQLI_ASSOC);
@@ -52,7 +50,20 @@ class Accountant extends User {
     }
     
     public function verifyFees($studentID) {
-        $sql = "UPDATE students SET applicationStatus = 'approved' WHERE studentID = $studentID";
+        // Check if student has fee commitment
+        $checkSql = "SELECT fee_commitment, fee_commitment_status FROM students WHERE studentID = $studentID";
+        $checkResult = $this->db->query($checkSql);
+        $student = $checkResult->fetch_assoc();
+        
+        // If has pending fee commitment, approve and mark commitment as approved
+        if($student['fee_commitment'] && ($student['fee_commitment_status'] == 'pending' || $student['fee_commitment_status'] == NULL)) {
+            $sql = "UPDATE students SET 
+                        applicationStatus = 'approved',
+                        fee_commitment_status = 'approved'
+                    WHERE studentID = $studentID";
+        } else {
+            $sql = "UPDATE students SET applicationStatus = 'approved' WHERE studentID = $studentID";
+        }
         return $this->db->query($sql);
     }
     
@@ -62,12 +73,10 @@ class Accountant extends User {
     }
     
     public function viewVerifiedStudents() {
-        // Only show students approved by Registrar AND approved by Accountant
         $sql = "SELECT s.*, u.name 
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
-                WHERE s.registrar_status = 'approved' 
-                AND s.applicationStatus = 'approved'";
+                WHERE s.applicationStatus = 'approved'";
         $result = $this->db->query($sql);
         if ($result && $result->num_rows > 0) {
             return $result->fetch_all(MYSQLI_ASSOC);

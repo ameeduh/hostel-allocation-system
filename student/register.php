@@ -47,6 +47,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             if($db->query($sql1)) {
                 $userID = $db->getInsertId();
                 
+                // Set applicationStatus to 'incomplete' - student needs to fill details
                 $sql2 = "INSERT INTO students (userID, regNumber, program, year, applicationStatus, gender) 
                          VALUES ($userID, '$regNumber', '$detectedProgram', 0, 'incomplete', '')";
                 
@@ -69,7 +70,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Registration - Hostel System</title>
-    <link rel="stylesheet" href="../css/style.css?v=8">
+    <link rel="stylesheet" href="../css/style.css?v=24">
 </head>
 <body>
     <div class="login-container">
@@ -78,7 +79,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         <?php if($message): ?>
             <div class="success-message">
                 <?php echo $message; ?>
-                <p style="margin-top: 10px;"><a href="../index.php">Click here to login</a></p>
+                <p style="margin-top: 10px;"><a href="../login.php">Click here to login</a></p>
             </div>
         <?php endif; ?>
         
@@ -108,7 +109,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         </form>
         
         <div class="footer">
-            Already have an account? <a href="../index.php">Login here</a>
+            Already have an account? <a href="../login.php">Login here</a>
         </div>
         <?php endif; ?>
     </div>

@@ -83,7 +83,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #F5F5F5;
+            background-color: #F5F5DC;
             height: 100vh;
             display: flex;
             justify-content: center;
@@ -92,23 +92,25 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         .login-container {
             background-color: #FFFFFF;
-            padding: 50px 40px;
+            padding: 40px;
             border-radius: 20px;
-            width: 450px;
+            width: 420px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             text-align: center;
             border-top: 5px solid #FFD700;
         }
 
-        h1 {
-            font-size: 28px;
-            font-weight: 700;
-            color: #8B4513;
-            margin-bottom: 40px;
+        /* Logo */
+        .logo {
+            margin-bottom: 35px;
+        }
+        .logo img {
+            max-width: 180px;
+            height: auto;
         }
 
         .form-group {
-            margin-bottom: 25px;
+            margin-bottom: 20px;
             text-align: left;
         }
 
@@ -116,7 +118,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             display: block;
             margin-bottom: 8px;
             color: #8B4513;
-            font-weight: 600;
+            font-weight: 500;
             font-size: 14px;
         }
 
@@ -124,9 +126,10 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             width: 100%;
             padding: 12px 15px;
             border: 1px solid #ddd;
-            border-radius: 10px;
+            border-radius: 8px;
             font-size: 14px;
             transition: all 0.3s;
+            background-color: #FFFFFF;
         }
 
         input:focus {
@@ -141,7 +144,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             background-color: #8B4513;
             color: #FFFFFF;
             border: none;
-            border-radius: 10px;
+            border-radius: 8px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
@@ -155,7 +158,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         .forgot-password {
             text-align: center;
-            margin-top: 25px;
+            margin-top: 20px;
         }
 
         .forgot-password a {
@@ -172,10 +175,10 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         .error {
             background-color: #ffebee;
             color: #c62828;
-            padding: 12px;
-            border-radius: 10px;
+            padding: 10px;
+            border-radius: 8px;
             margin-bottom: 20px;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         .footer {
@@ -187,7 +190,9 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
 </head>
 <body>
     <div class="login-container">
-        <h1>HOSTEL ALLOCATION SYSTEM</h1>
+        <div class="logo">
+            <img src="images/daeyang_university_logo.jpg" alt="Daeyang University Logo">
+        </div>
         
         <?php if($error): ?>
             <div class="error"><?php echo $error; ?></div>
@@ -195,7 +200,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         <form method="POST">
             <div class="form-group">
-                <label>Registration ID / Username</label>
+                <label>Registration ID</label>
                 <input type="text" name="username" required autofocus>
             </div>
             <div class="form-group">
@@ -206,11 +211,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         </form>
         
         <div class="forgot-password">
-            <a href="#">Forgot your password?</a>
+            <a href="#">Forgot Password?</a>
         </div>
         
         <div class="footer">
-            Hostel Allocation System &copy; <?php echo date('Y'); ?>
+            &copy; <?php echo date('Y'); ?> Daeyang University - Hostel Allocation System
         </div>
     </div>
 </body>
