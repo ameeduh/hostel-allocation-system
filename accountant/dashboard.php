@@ -29,16 +29,83 @@ if($result && $result->num_rows > 0) {
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'home';
 
-// Handle approve/reject actions
+// Handle approve/reject actions with auto room assignment
 if($_SERVER['REQUEST_METHOD'] == 'POST') {
     if(isset($_POST['approve'])) {
         $studentID = (int)$_POST['studentID'];
-        $accountant = new Accountant();
-        $accountant->login($_SESSION['username'], 'password123');
-        $accountant->verifyFees($studentID);
+        
+        // Get student's preferred room
+        $prefSql = "SELECT preferredRoomID FROM room_preferences WHERE studentID = $studentID AND status = 'pending'";
+        $prefResult = $db->query($prefSql);
+        
+        if($prefResult && $prefResult->num_rows > 0) {
+            $preference = $prefResult->fetch_assoc();
+            $preferredRoomID = $preference['preferredRoomID'];
+            
+            // Check if room still has available beds
+            $roomSql = "SELECT availableBeds, roomNumber, hostelName FROM rooms WHERE roomID = $preferredRoomID";
+            $roomResult = $db->query($roomSql);
+            $room = $roomResult->fetch_assoc();
+            
+            if($room && $room['availableBeds'] > 0) {
+                // Assign the preferred room
+                $updateRoomSql = "UPDATE rooms SET availableBeds = availableBeds - 1 WHERE roomID = $preferredRoomID";
+                $db->query($updateRoomSql);
+                
+                $updateStudentSql = "UPDATE students SET 
+                                        applicationStatus = 'allocated',
+                                        allocatedRoomID = $preferredRoomID,
+                                        allocatedDate = CURDATE(),
+                                        allocationStatus = 'active'
+                                    WHERE studentID = $studentID";
+                $db->query($updateStudentSql);
+                
+                $updatePrefSql = "UPDATE room_preferences SET status = 'assigned' WHERE studentID = $studentID";
+                $db->query($updatePrefSql);
+                
+                $checkFullSql = "UPDATE rooms SET status = 'full' WHERE roomID = $preferredRoomID AND availableBeds = 0";
+                $db->query($checkFullSql);
+                
+                // Send email
+                $studentSql = "SELECT u.email, u.name FROM students s JOIN users u ON s.userID = u.userID WHERE s.studentID = $studentID";
+                $studentResult = $db->query($studentSql);
+                $student = $studentResult->fetch_assoc();
+                
+                if($student && $student['email']) {
+                    require_once '../config/mail_config.php';
+                    $subject = "Room Allocation Confirmation";
+                    $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $student['name'] . ",</p><p>Congratulations! Your room has been allocated.</p><p><strong>Room Number:</strong> " . $room['roomNumber'] . "</p><p><strong>Hostel:</strong> " . $room['hostelName'] . "</p><p>Please visit the Warden's office to collect your room key.</p></body></html>";
+                    sendEmail($student['email'], $subject, $body);
+                }
+            } else {
+                $updatePrefSql = "UPDATE room_preferences SET status = 'full' WHERE studentID = $studentID";
+                $db->query($updatePrefSql);
+                
+                $accountant = new Accountant();
+                $accountant->login($_SESSION['username'], 'password123');
+                $accountant->verifyFees($studentID);
+                
+                $studentSql = "SELECT u.email, u.name FROM students s JOIN users u ON s.userID = u.userID WHERE s.studentID = $studentID";
+                $studentResult = $db->query($studentSql);
+                $student = $studentResult->fetch_assoc();
+                
+                if($student && $student['email']) {
+                    require_once '../config/mail_config.php';
+                    $subject = "Room Selection Required";
+                    $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $student['name'] . ",</p><p>Your fees have been verified, but your preferred room is now full.</p><p>Please log in and select another room.</p></body></html>";
+                    sendEmail($student['email'], $subject, $body);
+                }
+            }
+        } else {
+            $accountant = new Accountant();
+            $accountant->login($_SESSION['username'], 'password123');
+            $accountant->verifyFees($studentID);
+        }
+        
         header("Location: dashboard.php?page=pending&approved=1");
         exit();
     }
+    
     if(isset($_POST['reject'])) {
         $studentID = (int)$_POST['studentID'];
         $accountant = new Accountant();
@@ -64,7 +131,7 @@ $approved = isset($_GET['approved']);
 $rejected = isset($_GET['rejected']);
 
 // Get pending students
-$pendingSql = "SELECT s.studentID, s.program, s.year, s.gender, u.name 
+$pendingSql = "SELECT s.studentID, s.regNumber, s.program, s.year, s.gender, s.fee_commitment, u.name 
                FROM students s 
                JOIN users u ON s.userID = u.userID 
                WHERE s.applicationStatus = 'pending' 
@@ -78,7 +145,7 @@ if($pendingResult) {
 }
 
 // Get fee commitment students
-$feeCommitmentSql = "SELECT s.studentID, s.program, s.year, s.gender, s.fee_commitment_status, s.fee_commitment_note, u.name 
+$feeCommitmentSql = "SELECT s.studentID, s.regNumber, s.program, s.year, s.gender, s.fee_commitment_status, s.fee_commitment_note, u.name 
                      FROM students s 
                      JOIN users u ON s.userID = u.userID 
                      WHERE s.fee_commitment = 1 
@@ -93,7 +160,7 @@ if($feeCommitmentResult) {
 }
 
 // Get verified students
-$verifiedSql = "SELECT s.studentID, s.program, s.year, s.gender, u.name 
+$verifiedSql = "SELECT s.studentID, s.regNumber, s.program, s.year, s.gender, u.name 
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
                 WHERE s.applicationStatus = 'approved' 
@@ -241,22 +308,22 @@ $verifiedCount = count($verifiedStudents);
                     </thead>
                     <tbody>
                         <?php foreach($pendingStudents as $student): ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($student['name']); ?></td>
-                                <td><?php echo htmlspecialchars($student['program']); ?></td>
-                                <td><?php echo $student['year']; ?> Year</td>
-                                <td><?php echo $student['gender']; ?></td>
-                                <td>
-                                    <form method="POST" style="display:inline;">
-                                        <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
-                                        <button type="submit" name="approve" class="btn-approve" onclick="return confirm('Approve this student?')">Approve</button>
-                                    </form>
-                                    <form method="POST" style="display:inline;">
-                                        <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
-                                        <button type="submit" name="reject" class="btn-reject" onclick="return confirm('Reject this student?')">Reject</button>
-                                    </form>
-                                </td>
-                            </tr>
+                        <tr>
+                            <td><?php echo htmlspecialchars($student['name']); ?></td>
+                            <td><?php echo htmlspecialchars($student['program']); ?></td>
+                            <td><?php echo $student['year']; ?> Year</td>
+                            <td><?php echo $student['gender']; ?></td>
+                            <td>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
+                                    <button type="submit" name="approve" class="btn-approve" onclick="return confirm('Approve this student?')">Approve</button>
+                                </form>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
+                                    <button type="submit" name="reject" class="btn-reject" onclick="return confirm('Reject this student?')">Reject</button>
+                                </form>
+                            </td>
+                        </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
@@ -284,24 +351,24 @@ $verifiedCount = count($verifiedStudents);
                     </thead>
                     <tbody>
                         <?php foreach($feeCommitmentStudents as $student): ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($student['name']); ?></td>
-                                <td><?php echo htmlspecialchars($student['program']); ?></td>
-                                <td><?php echo $student['year']; ?> Year</td>
-                                <td><?php echo $student['gender']; ?></td>
-                                <td><?php echo htmlspecialchars($student['fee_commitment_note']); ?></td>
-                                <td><span class="fee-badge">Pending</span></td>
-                                <td>
-                                    <form method="POST" style="display:inline;">
-                                        <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
-                                        <button type="submit" name="approve" class="btn-approve" onclick="return confirm('Approve this fee commitment student?')">Approve</button>
-                                    </form>
-                                    <form method="POST" style="display:inline;">
-                                        <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
-                                        <button type="submit" name="reject" class="btn-reject" onclick="return confirm('Reject this fee commitment student?')">Reject</button>
-                                    </form>
-                                </td>
-                            </tr>
+                        <tr>
+                            <td><?php echo htmlspecialchars($student['name']); ?></td>
+                            <td><?php echo htmlspecialchars($student['program']); ?></td>
+                            <td><?php echo $student['year']; ?> Year</td>
+                            <td><?php echo $student['gender']; ?></td>
+                            <td><?php echo htmlspecialchars($student['fee_commitment_note']); ?></td>
+                            <td><span class="fee-badge">Pending</span></td>
+                            <td>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
+                                    <button type="submit" name="approve" class="btn-approve" onclick="return confirm('Approve this fee commitment student?')">Approve</button>
+                                </form>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
+                                    <button type="submit" name="reject" class="btn-reject" onclick="return confirm('Reject this fee commitment student?')">Reject</button>
+                                </form>
+                            </td>
+                        </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
@@ -327,13 +394,13 @@ $verifiedCount = count($verifiedStudents);
                     </thead>
                     <tbody>
                         <?php foreach($verifiedStudents as $student): ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($student['name']); ?></td>
-                                <td><?php echo htmlspecialchars($student['program']); ?></td>
-                                <td><?php echo $student['year']; ?> Year</td>
-                                <td><?php echo $student['gender']; ?></td>
-                                <td><span class="status-badge">Approved</span></td>
-                            </tr>
+                        <tr>
+                            <td><?php echo htmlspecialchars($student['name']); ?></td>
+                            <td><?php echo htmlspecialchars($student['program']); ?></td>
+                            <td><?php echo $student['year']; ?> Year</td>
+                            <td><?php echo $student['gender']; ?></td>
+                            <td><span class="status-badge">Approved</span></td>
+                        </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>

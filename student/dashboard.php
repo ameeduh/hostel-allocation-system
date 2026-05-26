@@ -45,8 +45,39 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     exit();
 }
 
-// Handle details form submission
+// Handle details form submission with blacklist check
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
+    // Check if student is blacklisted FIRST
+    $blacklistSql = "SELECT * FROM blacklist WHERE regNumber = '$regNumber' AND status = 'active'";
+    $blacklistResult = $db->query($blacklistSql);
+    
+    if($blacklistResult && $blacklistResult->num_rows > 0) {
+        $blacklist = $blacklistResult->fetch_assoc();
+        
+        $updateSql = "UPDATE students SET 
+                        applicationStatus = 'rejected', 
+                        registrar_status = 'rejected', 
+                        registrar_reason = 'Blacklisted: " . $blacklist['reason'] . "' 
+                      WHERE studentID = $studentID";
+        $db->query($updateSql);
+        
+        // Send rejection email
+        $userSql = "SELECT email, name FROM users WHERE userID = {$_SESSION['user_id']}";
+        $userResult = $db->query($userSql);
+        $user = $userResult->fetch_assoc();
+        
+        if($user && $user['email']) {
+            require_once '../config/mail_config.php';
+            $subject = "Hostel Application Status";
+            $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $user['name'] . ",</p><p>Your hostel application has been <strong style='color:#c62828;'>REJECTED</strong>.</p><p><strong>Reason:</strong> " . $blacklist['reason'] . "</p><p>Please contact the Registrar's office for further clarification.</p></body></html>";
+            sendEmail($user['email'], $subject, $body);
+        }
+        
+        header("Location: dashboard.php?page=details&blacklisted=1");
+        exit();
+    }
+    
+    // If not blacklisted, proceed with normal registration
     $program = $detectedProgram;
     $year = $_POST['year'];
     $phone = $_POST['phone'];
@@ -90,6 +121,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
 $success = isset($_GET['success']);
 $error = isset($_GET['error']);
 $profileUpdated = isset($_GET['updated']);
+$blacklisted = isset($_GET['blacklisted']);
 ?>
 
 <!DOCTYPE html>
@@ -99,321 +131,91 @@ $profileUpdated = isset($_GET['updated']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Portal - Daeyang University</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f5f5;
-        }
-
-        /* Top Bar - Prayer | Love | Servantship */
-        .top-bar {
-            background-color: #8B4513;
-            color: white;
-            padding: 15px 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .prayer-love {
-            font-size: 16px;
-        }
-        .solideo {
-            font-size: 16px;
-            font-weight: 500;
-        }
-
-        /* Navigation Bar with University Name on same line */
-        .nav-bar {
-            background-color: white;
-            padding: 15px 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        .university-name {
-            font-size: 22px;
-            font-weight: 700;
-            color: #8B4513;
-        }
-        .nav-links {
-            display: flex;
-            gap: 25px;
-            flex-wrap: wrap;
-        }
-        .nav-links a {
-            text-decoration: none;
-            color: #333;
-            font-size: 15px;
-            font-weight: 500;
-        }
-        .nav-links a:hover {
-            color: #8B4513;
-        }
-        .nav-links a.active {
-            color: #8B4513;
-            font-weight: 600;
-        }
-
-        /* Welcome Section - Compact */
-        .welcome-section {
-            background-color: white;
-            margin: 15px 40px;
-            padding: 15px 25px;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }
-        .welcome-section h1 {
-            font-size: 20px;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        .welcome-section p {
-            font-size: 14px;
-            color: #666;
-        }
-
-        /* Content Area - Compact */
-        .content-area {
-            margin: 15px 40px;
-            min-height: 250px;
-        }
-
-        /* Content Card */
-        .content-card {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            border: 1px solid #e0e0e0;
-        }
-        .content-card h2 {
-            color: #8B4513;
-            font-size: 18px;
-            margin-bottom: 15px;
-            border-bottom: 2px solid #FFD700;
-            display: inline-block;
-            padding-bottom: 5px;
-        }
-
-        /* Form Styles */
-        .form-row {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 12px;
-            flex-wrap: wrap;
-        }
-        .form-group {
-            flex: 1;
-            min-width: 180px;
-        }
-        .form-group label {
-            display: block;
-            font-size: 12px;
-            font-weight: 600;
-            color: #8B4513;
-            margin-bottom: 4px;
-        }
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 13px;
-        }
-        .submit-btn {
-            background-color: #8B4513;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        .submit-btn:hover {
-            background-color: #A0522D;
-        }
-
-        /* Status Box */
-        .status-box {
-            text-align: center;
-            padding: 20px;
-            border-radius: 8px;
-        }
-        .status-box.pending { background: #FFF8DC; }
-        .status-box.approved { background: #e8f5e9; }
-        .status-box.rejected { background: #ffebee; }
-        .status-box.allocated { background: #e8f5e9; }
-        .status-icon { font-size: 40px; margin-bottom: 10px; }
-        .status-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; }
-
-        /* Room Details */
-        .room-info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
-        }
-        .room-info-item label {
-            font-size: 11px;
-            color: #666;
-            display: block;
-            margin-bottom: 3px;
-        }
-        .room-info-item p {
-            font-size: 15px;
-            font-weight: 600;
-            color: #8B4513;
-        }
-        .clearance-btn {
-            display: inline-block;
-            background-color: #FFD700;
-            color: #000;
-            padding: 8px 16px;
-            border-radius: 5px;
-            text-decoration: none;
-            font-weight: 600;
-            margin-top: 15px;
-            font-size: 13px;
-        }
-
-        /* Profile Grid */
-        .profile-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-        .profile-field {
-            padding: 8px;
-            border-bottom: 1px solid #eee;
-        }
-        .profile-field label {
-            font-size: 11px;
-            color: #666;
-            display: block;
-            margin-bottom: 3px;
-        }
-        .profile-field p {
-            font-size: 14px;
-            font-weight: 500;
-            color: #333;
-        }
-
-        /* Footer - Compact */
-        .footer {
-            background-color: #8B4513;
-            color: white;
-            padding: 25px 40px;
-            margin-top: 20px;
-        }
-        .footer-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 25px;
-        }
-        .footer-section h3 {
-            font-size: 15px;
-            margin-bottom: 10px;
-            color: #FFD700;
-        }
-        .footer-section p, .footer-section a {
-            font-size: 12px;
-            color: #f0f0f0;
-            text-decoration: none;
-            line-height: 1.6;
-        }
-        .footer-section a:hover {
-            color: #FFD700;
-        }
-        .copyright {
-            text-align: center;
-            padding-top: 20px;
-            margin-top: 20px;
-            border-top: 1px solid rgba(255,255,255,0.2);
-            font-size: 11px;
-            color: #f0f0f0;
-        }
-
-        /* Messages */
-        .success-message {
-            background-color: #e8f5e9;
-            color: #2e7d32;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            text-align: center;
-            font-size: 13px;
-        }
-        .error-message {
-            background-color: #ffebee;
-            color: #c62828;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            text-align: center;
-            font-size: 13px;
-        }
-
-        @media (max-width: 768px) {
-            .top-bar, .nav-bar, .welcome-section, .content-area {
-                padding-left: 20px;
-                padding-right: 20px;
-                margin-left: 20px;
-                margin-right: 20px;
-            }
-            .nav-bar {
-                flex-direction: column;
-                gap: 10px;
-            }
-            .nav-links {
-                justify-content: center;
-            }
-            .form-row {
-                flex-direction: column;
-            }
-            .footer-content {
-                grid-template-columns: 1fr;
-                text-align: center;
-            }
+        *{margin:0;padding:0;box-sizing:border-box;}
+        body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f5f5f5;}
+        .top-bar{background-color:#8B4513;color:white;padding:15px 40px;display:flex;justify-content:space-between;align-items:center;}
+        .prayer-love{font-size:16px;}
+        .solideo{font-size:16px;font-weight:500;}
+        .nav-bar{background-color:white;padding:15px 40px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;border-bottom:1px solid #e0e0e0;}
+        .university-name{font-size:22px;font-weight:700;color:#8B4513;}
+        .nav-links{display:flex;gap:25px;flex-wrap:wrap;}
+        .nav-links a{text-decoration:none;color:#333;font-size:15px;font-weight:500;}
+        .nav-links a:hover{color:#8B4513;}
+        .nav-links a.active{color:#8B4513;font-weight:600;}
+        .welcome-section{background-color:white;margin:15px 40px;padding:15px 25px;border-radius:8px;border:1px solid #e0e0e0;}
+        .welcome-section h1{font-size:20px;color:#333;margin-bottom:5px;}
+        .content-area{margin:15px 40px;min-height:250px;}
+        .content-card{background:white;border-radius:8px;padding:20px;border:1px solid #e0e0e0;}
+        .content-card h2{color:#8B4513;font-size:18px;margin-bottom:15px;border-bottom:2px solid #FFD700;display:inline-block;padding-bottom:5px;}
+        
+        .form-row{display:flex;gap:15px;margin-bottom:12px;flex-wrap:wrap;}
+        .form-group{flex:1;min-width:180px;}
+        .form-group label{display:block;font-size:12px;font-weight:600;color:#8B4513;margin-bottom:4px;}
+        .form-group input,.form-group select,.form-group textarea{width:100%;padding:8px;border:1px solid #ddd;border-radius:5px;font-size:13px;}
+        .submit-btn{background-color:#8B4513;color:white;padding:10px 20px;border:none;border-radius:5px;font-size:14px;font-weight:600;cursor:pointer;margin-top:10px;}
+        
+        .status-box{text-align:center;padding:20px;border-radius:8px;}
+        .status-box.pending{background:#FFF8DC;}
+        .status-box.approved{background:#e8f5e9;}
+        .status-box.rejected{background:#ffebee;}
+        .status-box.allocated{background:#e8f5e9;}
+        .status-icon{font-size:40px;margin-bottom:10px;}
+        .status-title{font-size:18px;font-weight:bold;margin-bottom:8px;}
+        
+        .room-info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:15px;}
+        .room-info-item label{font-size:11px;color:#666;display:block;margin-bottom:3px;}
+        .room-info-item p{font-size:15px;font-weight:600;color:#8B4513;}
+        .clearance-btn{display:inline-block;background-color:#FFD700;color:#000;padding:8px 16px;border-radius:5px;text-decoration:none;font-weight:600;margin-top:15px;font-size:13px;}
+        
+        .profile-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:20px;}
+        .profile-field{padding:8px;border-bottom:1px solid #eee;}
+        .profile-field label{font-size:11px;color:#666;display:block;margin-bottom:3px;}
+        .profile-field p{font-size:14px;font-weight:500;color:#333;}
+        
+        .footer{background-color:#8B4513;color:white;padding:25px 40px;margin-top:20px;}
+        .footer-content{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:25px;}
+        .footer-section h3{font-size:15px;margin-bottom:10px;color:#FFD700;}
+        .footer-section p,.footer-section a{font-size:12px;color:#f0f0f0;text-decoration:none;line-height:1.6;}
+        .footer-section a:hover{color:#FFD700;}
+        .copyright{text-align:center;padding-top:20px;margin-top:20px;border-top:1px solid rgba(255,255,255,0.2);font-size:11px;}
+        
+        .success-message{background-color:#e8f5e9;color:#2e7d32;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
+        .error-message{background-color:#ffebee;color:#c62828;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
+        
+        @media (max-width:768px){
+            .top-bar,.nav-bar,.welcome-section,.content-area{padding-left:20px;padding-right:20px;margin-left:20px;margin-right:20px;}
+            .nav-bar{flex-direction:column;gap:10px;}
+            .nav-links{justify-content:center;}
+            .form-row{flex-direction:column;}
         }
     </style>
 </head>
 <body>
-    <!-- Top Bar: Prayer | Love | Servantship and Solideo -->
     <div class="top-bar">
         <div class="prayer-love">Prayer | Love | Servantship</div>
         <div class="solideo">Solideo</div>
     </div>
 
-    <!-- Navigation Bar with University Name on same line -->
     <div class="nav-bar">
         <div class="university-name">Daeyang University</div>
         <div class="nav-links">
             <a href="?page=home" class="<?php echo ($page == 'home') ? 'active' : ''; ?>">Home</a>
             <a href="?page=details" class="<?php echo ($page == 'details') ? 'active' : ''; ?>">Complete Details</a>
-            <a href="?page=approval" class="<?php echo ($page == 'approval') ? 'active' : ''; ?>">Approval Details</a>
-            <a href="?page=room" class="<?php echo ($page == 'room') ? 'active' : ''; ?>">Room Details</a>
+            <a href="apply_room.php">Select Room</a>
+            <?php if($status == 'allocated'): ?>
+                <a href="?page=room" class="<?php echo ($page == 'room') ? 'active' : ''; ?>">Room Details</a>
+            <?php endif; ?>
             <a href="?page=profile" class="<?php echo ($page == 'profile') ? 'active' : ''; ?>">Profile</a>
+            <a href="request_fee_commitment.php">Request Fee Commitment</a>
             <a href="../logout.php">Logout</a>
         </div>
     </div>
 
-    <!-- Welcome Section -->
     <div class="welcome-section">
         <h1>Welcome, <?php echo $studentData['name']; ?>!</h1>
         <p>Reg No: <?php echo $_SESSION['username']; ?></p>
     </div>
 
-    <!-- Main Content Area -->
     <div class="content-area">
         <?php if($success): ?>
             <div class="success-message">Details saved successfully!</div>
@@ -424,11 +226,27 @@ $profileUpdated = isset($_GET['updated']);
         <?php if($profileUpdated): ?>
             <div class="success-message">Profile updated successfully!</div>
         <?php endif; ?>
+        <?php if($blacklisted): ?>
+            <div class="error-message">Your application has been rejected. You are on the Registrar's blacklist. Please contact the Registrar's office.</div>
+        <?php endif; ?>
 
         <!-- HOME PAGE -->
         <?php if($page == 'home'): ?>
             <div class="content-card">
+                <h2>Dashboard</h2>
                 <p>Welcome to the Hostel Allocation System. Use the menu above to navigate.</p>
+                <p style="margin-top:10px;">Your application status: 
+                    <strong>
+                        <?php 
+                        if($status == 'pending') echo 'Pending Accountant Approval';
+                        elseif($status == 'approved' && $registrarStatus != 'approved') echo 'Pending Registrar Approval';
+                        elseif($status == 'approved' && $registrarStatus == 'approved') echo 'Eligible - Waiting for Room Allocation';
+                        elseif($status == 'allocated') echo 'Room Allocated';
+                        elseif($status == 'rejected') echo 'Rejected';
+                        else echo 'Not Submitted';
+                        ?>
+                    </strong>
+                </p>
             </div>
         <?php endif; ?>
 
@@ -477,7 +295,7 @@ $profileUpdated = isset($_GET['updated']);
                             <label>Home Address</label>
                             <textarea name="address" rows="2" required></textarea>
                         </div>
-                        <h3 style="margin: 15px 0 10px 0; color: #8B4513; font-size: 16px;">Medical Information</h3>
+                        <h3 style="margin:15px 0 10px 0; color:#8B4513; font-size:16px;">Medical Information</h3>
                         <div class="form-group">
                             <label>Any medical conditions?</label>
                             <select name="medical_condition" id="medical_condition" onchange="toggleMedical()">
@@ -491,7 +309,7 @@ $profileUpdated = isset($_GET['updated']);
                                 <textarea name="medical_condition_details" rows="2" placeholder="e.g., Asthma, Diabetes, Allergies"></textarea>
                             </div>
                         </div>
-                        <h3 style="margin: 15px 0 10px 0; color: #8B4513; font-size: 16px;">Emergency Contact</h3>
+                        <h3 style="margin:15px 0 10px 0; color:#8B4513; font-size:16px;">Emergency Contact</h3>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Guardian Name</label>
@@ -513,7 +331,7 @@ $profileUpdated = isset($_GET['updated']);
                             <label>Guardian Phone</label>
                             <input type="tel" name="guardian_phone" required>
                         </div>
-                        <div class="checkbox-group" style="display: flex; align-items: center; gap: 10px; margin: 15px 0;">
+                        <div style="display:flex; align-items:center; gap:10px; margin:15px 0;">
                             <input type="checkbox" name="agreement" required>
                             <label>I confirm that all information provided is correct.</label>
                         </div>
@@ -525,57 +343,7 @@ $profileUpdated = isset($_GET['updated']);
             </div>
         <?php endif; ?>
 
-        <!-- APPROVAL DETAILS PAGE -->
-        <?php if($page == 'approval'): ?>
-            <div class="content-card">
-                <h2>Approval Status</h2>
-                <?php if($status == 'pending' && $registrarStatus != 'approved'): ?>
-                    <div class="status-box pending">
-                        <div class="status-icon">⏳</div>
-                        <div class="status-title">Pending Accountant Approval</div>
-                        <p>Your application is waiting for fee verification by the Accountant.</p>
-                    </div>
-                <?php elseif($status == 'approved' && ($registrarStatus == 'pending' || $registrarStatus == NULL)): ?>
-                    <div class="status-box pending">
-                        <div class="status-icon">✅</div>
-                        <div class="status-title">Pending Registrar Eligibility Review</div>
-                        <p>Your fees have been verified. Waiting for Registrar to review your eligibility.</p>
-                    </div>
-                <?php elseif($status == 'approved' && $registrarStatus == 'approved'): ?>
-                    <div class="status-box approved">
-                        <div class="status-icon">✅</div>
-                        <div class="status-title">Eligible - Waiting for Room Allocation</div>
-                        <p>You have been approved by Registrar. Waiting for Warden to allocate a room.</p>
-                    </div>
-                <?php elseif($status == 'allocated'): ?>
-                    <div class="status-box allocated">
-                        <div class="status-icon">🎉</div>
-                        <div class="status-title">Room Allocated</div>
-                        <p>Congratulations! A room has been allocated to you.</p>
-                    </div>
-                <?php elseif($registrarStatus == 'rejected'): ?>
-                    <div class="status-box rejected">
-                        <div class="status-icon">❌</div>
-                        <div class="status-title">Application Rejected by Registrar</div>
-                        <p>Your application has been rejected. Reason: <?php echo $studentData['registrar_reason']; ?></p>
-                    </div>
-                <?php elseif($status == 'rejected'): ?>
-                    <div class="status-box rejected">
-                        <div class="status-icon">❌</div>
-                        <div class="status-title">Application Rejected by Accountant</div>
-                        <p>Your fee verification failed. Please contact Accounts office.</p>
-                    </div>
-                <?php else: ?>
-                    <div class="status-box pending">
-                        <div class="status-icon">⏳</div>
-                        <div class="status-title">Application Submitted</div>
-                        <p>Your application has been submitted. Please wait for processing.</p>
-                    </div>
-                <?php endif; ?>
-            </div>
-        <?php endif; ?>
-
-        <!-- ROOM DETAILS PAGE -->
+        <!-- ROOM DETAILS PAGE - Only visible when allocated -->
         <?php if($page == 'room'): ?>
             <div class="content-card">
                 <h2>Room Details</h2>
@@ -588,29 +356,17 @@ $profileUpdated = isset($_GET['updated']);
                 ?>
                     <?php if($room): ?>
                         <div class="room-info-grid">
-                            <div class="room-info-item">
-                                <label>Room Number</label>
-                                <p><?php echo $room['roomNumber']; ?></p>
-                            </div>
-                            <div class="room-info-item">
-                                <label>Hostel Name</label>
-                                <p><?php echo $room['hostelName']; ?></p>
-                            </div>
-                            <div class="room-info-item">
-                                <label>Gender</label>
-                                <p><?php echo $room['gender']; ?></p>
-                            </div>
-                            <div class="room-info-item">
-                                <label>Allocation Date</label>
-                                <p><?php echo $studentData['allocatedDate']; ?></p>
-                            </div>
+                            <div class="room-info-item"><label>Room Number</label><p><?php echo $room['roomNumber']; ?></p></div>
+                            <div class="room-info-item"><label>Hostel Name</label><p><?php echo $room['hostelName']; ?></p></div>
+                            <div class="room-info-item"><label>Gender</label><p><?php echo $room['gender']; ?></p></div>
+                            <div class="room-info-item"><label>Allocation Date</label><p><?php echo $studentData['allocatedDate']; ?></p></div>
                         </div>
                         <a href="request_clearance.php" class="clearance-btn" onclick="return confirm('Request clearance? This will vacate your room.')">Request Clearance</a>
                     <?php else: ?>
                         <p>No room allocated yet.</p>
                     <?php endif; ?>
                 <?php else: ?>
-                    <p>No room has been allocated to you yet. Please wait for the Warden.</p>
+                    <p>No room has been allocated to you yet. Complete your application and fee verification first.</p>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -620,58 +376,20 @@ $profileUpdated = isset($_GET['updated']);
             <div class="content-card">
                 <h2>My Profile</h2>
                 <div class="profile-grid">
-                    <div class="profile-field">
-                        <label>Full Name</label>
-                        <p><?php echo $studentData['name']; ?></p>
-                    </div>
-                    <div class="profile-field">
-                        <label>Registration Number</label>
-                        <p><?php echo $_SESSION['username']; ?></p>
-                    </div>
-                    <div class="profile-field">
-                        <label>Program</label>
-                        <p><?php echo $detectedProgram; ?></p>
-                    </div>
-                    <div class="profile-field">
-                        <label>Year of Study</label>
-                        <p><?php 
-                            $year = $studentData['year'];
-                            if($year == 1) echo '1st Year';
-                            elseif($year == 2) echo '2nd Year';
-                            elseif($year == 3) echo '3rd Year';
-                            elseif($year == 4) echo '4th Year';
-                            else echo 'Not set';
-                        ?></p>
-                    </div>
-                    <div class="profile-field">
-                        <label>Gender</label>
-                        <p><?php echo $studentData['gender'] ?: 'Not set'; ?></p>
-                    </div>
-                    <div class="profile-field">
-                        <label>Phone Number</label>
-                        <p><?php echo $studentData['phone'] ?: 'Not set'; ?></p>
-                    </div>
-                    <div class="profile-field">
-                        <label>Email Address</label>
-                        <p><?php echo $studentData['email'] ?: 'Not set'; ?></p>
-                    </div>
-                    <div class="profile-field">
-                        <label>Home Address</label>
-                        <p><?php echo $studentData['address'] ?: 'Not set'; ?></p>
-                    </div>
+                    <div class="profile-field"><label>Full Name</label><p><?php echo $studentData['name']; ?></p></div>
+                    <div class="profile-field"><label>Registration Number</label><p><?php echo $_SESSION['username']; ?></p></div>
+                    <div class="profile-field"><label>Program</label><p><?php echo $detectedProgram; ?></p></div>
+                    <div class="profile-field"><label>Year of Study</label><p><?php $year = $studentData['year']; if($year==1) echo '1st Year'; elseif($year==2) echo '2nd Year'; elseif($year==3) echo '3rd Year'; elseif($year==4) echo '4th Year'; else echo 'Not set'; ?></p></div>
+                    <div class="profile-field"><label>Gender</label><p><?php echo $studentData['gender'] ?: 'Not set'; ?></p></div>
+                    <div class="profile-field"><label>Phone Number</label><p><?php echo $studentData['phone'] ?: 'Not set'; ?></p></div>
+                    <div class="profile-field"><label>Email Address</label><p><?php echo $studentData['email'] ?: 'Not set'; ?></p></div>
+                    <div class="profile-field"><label>Home Address</label><p><?php echo $studentData['address'] ?: 'Not set'; ?></p></div>
                 </div>
-                
-                <h3 style="margin: 15px 0 10px 0; color: #8B4513; font-size: 16px;">Update Contact Information</h3>
+                <h3 style="margin:15px 0 10px 0; color:#8B4513; font-size:16px;">Update Contact Information</h3>
                 <form method="POST">
                     <div class="form-row">
-                        <div class="form-group">
-                            <label>Phone Number</label>
-                            <input type="tel" name="phone" value="<?php echo $studentData['phone']; ?>">
-                        </div>
-                        <div class="form-group">
-                            <label>Email Address</label>
-                            <input type="email" name="email" value="<?php echo $studentData['email']; ?>">
-                        </div>
+                        <div class="form-group"><label>Phone Number</label><input type="tel" name="phone" value="<?php echo $studentData['phone']; ?>"></div>
+                        <div class="form-group"><label>Email Address</label><input type="email" name="email" value="<?php echo $studentData['email']; ?>"></div>
                     </div>
                     <button type="submit" name="update_profile" class="submit-btn">Update Profile</button>
                 </form>
@@ -679,28 +397,13 @@ $profileUpdated = isset($_GET['updated']);
         <?php endif; ?>
     </div>
 
-    <!-- Footer -->
     <div class="footer">
         <div class="footer-content">
-            <div class="footer-section">
-                <h3>About Us</h3>
-                <p>Daeyang University is a Christian University founded by the Miracle for Africa Foundation. It is situated behind Malawi School of Government (formerly MiM), off the M1 road to Kamuzu International Airport next to the Kanengo industrial area in the northern part of Lilongwe.</p>
-            </div>
-            <div class="footer-section">
-                <h3>Quick Links</h3>
-                <p><a href="#">Home</a></p>
-                <p><a href="#">About Us</a></p>
-                <p><a href="#">Contact Us</a></p>
-            </div>
-            <div class="footer-section">
-                <h3>Contact Us</h3>
-                <p>📞 +265994000389</p>
-                <p>✉️ registrar@dyuni.ac.mw</p>
-            </div>
+            <div class="footer-section"><h3>About Us</h3><p>Daeyang University is a Christian University founded by the Miracle for Africa Foundation.</p></div>
+            <div class="footer-section"><h3>Quick Links</h3><p><a href="#">Home</a></p><p><a href="#">About Us</a></p><p><a href="#">Contact Us</a></p></div>
+            <div class="footer-section"><h3>Contact Us</h3><p>+265994000389</p><p>registrar@dyuni.ac.mw</p></div>
         </div>
-        <div class="copyright">
-            &copy; <?php echo date('Y'); ?> Daeyang University. All rights reserved.
-        </div>
+        <div class="copyright">&copy; <?php echo date('Y'); ?> Daeyang University. All rights reserved.</div>
     </div>
 
     <script>
