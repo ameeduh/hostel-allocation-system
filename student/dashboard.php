@@ -122,6 +122,57 @@ $success = isset($_GET['success']);
 $error = isset($_GET['error']);
 $profileUpdated = isset($_GET['updated']);
 $blacklisted = isset($_GET['blacklisted']);
+
+// Handle password change
+$password_message = '';
+$password_message_type = '';
+
+if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
+    $current_password = $_POST['current_password'];
+    $new_password = $_POST['new_password'];
+    $confirm_password = $_POST['confirm_password'];
+    
+    $userSql = "SELECT password FROM users WHERE userID = {$_SESSION['user_id']}";
+    $userResult = $db->query($userSql);
+    $user = $userResult->fetch_assoc();
+    
+    if(password_verify($current_password, $user['password'])) {
+        if(strlen($new_password) < 6) {
+            $password_message = "Password must be at least 6 characters long.";
+            $password_message_type = "error";
+        } elseif($new_password != $confirm_password) {
+            $password_message = "New password and confirmation do not match.";
+            $password_message_type = "error";
+        } elseif(password_verify($new_password, $user['password'])) {
+            $password_message = "New password must be different from your current password.";
+            $password_message_type = "error";
+        } else {
+            $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+            $updateSql = "UPDATE users SET password = '$hashed_password' WHERE userID = {$_SESSION['user_id']}";
+            if($db->query($updateSql)) {
+                $password_message = "Password changed successfully!";
+                $password_message_type = "success";
+                
+                $emailSql = "SELECT email, name FROM users WHERE userID = {$_SESSION['user_id']}";
+                $emailResult = $db->query($emailSql);
+                $user = $emailResult->fetch_assoc();
+                
+                if($user && $user['email']) {
+                    require_once '../config/mail_config.php';
+                    $subject = "Password Changed Notification";
+                    $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $user['name'] . ",</p><p>Your password was successfully changed on " . date('Y-m-d H:i:s') . ".</p><p>If you did not make this change, please contact the Administrator immediately.</p></body></html>";
+                    sendEmail($user['email'], $subject, $body);
+                }
+            } else {
+                $password_message = "Failed to change password. Please try again.";
+                $password_message_type = "error";
+            }
+        }
+    } else {
+        $password_message = "Current password is incorrect.";
+        $password_message_type = "error";
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -172,15 +223,15 @@ $blacklisted = isset($_GET['blacklisted']);
         .profile-field label{font-size:11px;color:#666;display:block;margin-bottom:3px;}
         .profile-field p{font-size:14px;font-weight:500;color:#333;}
         
+        .success-message{background-color:#d4edda;color:#155724;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
+        .error-message{background-color:#f8d7da;color:#721c24;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
+        
         .footer{background-color:#8B4513;color:white;padding:25px 40px;margin-top:20px;}
         .footer-content{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:25px;}
         .footer-section h3{font-size:15px;margin-bottom:10px;color:#FFD700;}
         .footer-section p,.footer-section a{font-size:12px;color:#f0f0f0;text-decoration:none;line-height:1.6;}
         .footer-section a:hover{color:#FFD700;}
         .copyright{text-align:center;padding-top:20px;margin-top:20px;border-top:1px solid rgba(255,255,255,0.2);font-size:11px;}
-        
-        .success-message{background-color:#e8f5e9;color:#2e7d32;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
-        .error-message{background-color:#ffebee;color:#c62828;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
         
         @media (max-width:768px){
             .top-bar,.nav-bar,.welcome-section,.content-area{padding-left:20px;padding-right:20px;margin-left:20px;margin-right:20px;}
@@ -343,7 +394,7 @@ $blacklisted = isset($_GET['blacklisted']);
             </div>
         <?php endif; ?>
 
-        <!-- ROOM DETAILS PAGE - Only visible when allocated -->
+        <!-- ROOM DETAILS PAGE -->
         <?php if($page == 'room'): ?>
             <div class="content-card">
                 <h2>Room Details</h2>
@@ -385,6 +436,7 @@ $blacklisted = isset($_GET['blacklisted']);
                     <div class="profile-field"><label>Email Address</label><p><?php echo $studentData['email'] ?: 'Not set'; ?></p></div>
                     <div class="profile-field"><label>Home Address</label><p><?php echo $studentData['address'] ?: 'Not set'; ?></p></div>
                 </div>
+                
                 <h3 style="margin:15px 0 10px 0; color:#8B4513; font-size:16px;">Update Contact Information</h3>
                 <form method="POST">
                     <div class="form-row">
@@ -392,6 +444,31 @@ $blacklisted = isset($_GET['blacklisted']);
                         <div class="form-group"><label>Email Address</label><input type="email" name="email" value="<?php echo $studentData['email']; ?>"></div>
                     </div>
                     <button type="submit" name="update_profile" class="submit-btn">Update Profile</button>
+                </form>
+                
+                <h3 style="margin:25px 0 10px 0; color:#8B4513; font-size:16px;">Change Password</h3>
+                <?php if($password_message): ?>
+                    <div class="<?php echo $password_message_type; ?>-message" style="margin-bottom:15px;"><?php echo $password_message; ?></div>
+                <?php endif; ?>
+                <form method="POST">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Current Password</label>
+                            <input type="password" name="current_password" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>New Password</label>
+                            <input type="password" name="new_password" required>
+                            <small style="color:#666;">Minimum 6 characters</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Confirm New Password</label>
+                            <input type="password" name="confirm_password" required>
+                        </div>
+                    </div>
+                    <button type="submit" name="change_password" class="submit-btn">Change Password</button>
                 </form>
             </div>
         <?php endif; ?>

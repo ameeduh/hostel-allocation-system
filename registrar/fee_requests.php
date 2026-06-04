@@ -14,6 +14,21 @@ $registrarName = $_SESSION['name'];
 $message = '';
 $messageType = '';
 $showApproved = isset($_GET['view']) && $_GET['view'] == 'approved';
+$departmentFilter = isset($_GET['dept']) ? $_GET['dept'] : 'all';
+
+// Function to build department filter WHERE clause
+function getDepartmentFilter($departmentFilter) {
+    if($departmentFilter == 'ict') {
+        return " AND regNumber LIKE '%BscICT%'";
+    } elseif($departmentFilter == 'nursing') {
+        return " AND regNumber LIKE '%BscNM%'";
+    } elseif($departmentFilter == 'business') {
+        return " AND regNumber LIKE '%BscBA%'";
+    }
+    return "";
+}
+
+$departmentWhere = getDepartmentFilter($departmentFilter);
 
 // Handle approve request
 if(isset($_GET['approve'])) {
@@ -50,7 +65,7 @@ if(isset($_GET['approve'])) {
             sendEmail($request['contact_email'], $subject, $body);
         }
         
-        header("Location: fee_requests.php?msg=approved");
+        header("Location: fee_requests.php?msg=approved&dept=" . $departmentFilter);
         exit();
     }
 }
@@ -78,7 +93,7 @@ if(isset($_GET['reject'])) {
             sendEmail($request['contact_email'], $subject, $body);
         }
         
-        header("Location: fee_requests.php?msg=rejected");
+        header("Location: fee_requests.php?msg=rejected&dept=" . $departmentFilter);
         exit();
     }
 }
@@ -94,8 +109,8 @@ if(isset($_GET['msg'])) {
     }
 }
 
-// Get pending requests
-$pendingSql = "SELECT * FROM fee_commitment_requests WHERE status = 'pending' ORDER BY requestDate ASC";
+// Get pending requests (with department filter)
+$pendingSql = "SELECT * FROM fee_commitment_requests WHERE status = 'pending' $departmentWhere ORDER BY requestDate ASC";
 $pendingResult = $db->query($pendingSql);
 $pendingRequests = array();
 if($pendingResult) {
@@ -104,8 +119,8 @@ if($pendingResult) {
     }
 }
 
-// Get approved requests
-$approvedSql = "SELECT * FROM fee_commitment_requests WHERE status = 'approved' ORDER BY approvedDate DESC";
+// Get approved requests (with department filter)
+$approvedSql = "SELECT * FROM fee_commitment_requests WHERE status = 'approved' $departmentWhere ORDER BY approvedDate DESC";
 $approvedResult = $db->query($approvedSql);
 $approvedRequests = array();
 if($approvedResult) {
@@ -139,9 +154,13 @@ if($approvedResult) {
         .content-card{background:white;border-radius:8px;padding:20px;border:1px solid #e0e0e0;}
         .content-card h2{color:#8B4513;font-size:18px;margin-bottom:15px;border-bottom:2px solid #FFD700;display:inline-block;padding-bottom:5px;}
         
-        .sub-tabs{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid #ddd;padding-bottom:10px;}
+        .sub-tabs{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid #ddd;padding-bottom:10px;flex-wrap:wrap;}
         .sub-tab{padding:8px 20px;text-decoration:none;border-radius:5px;background:#f0f0f0;color:#333;}
         .sub-tab.active{background:#8B4513;color:white;}
+        
+        .filter-dropdown{margin-bottom:20px;display:flex;align-items:center;gap:15px;flex-wrap:wrap;}
+        .filter-dropdown label{font-weight:600;color:#8B4513;font-size:14px;}
+        .filter-dropdown select{padding:8px 15px;border:1px solid #ddd;border-radius:5px;font-size:13px;background:white;}
         
         .data-table{width:100%;border-collapse:collapse;margin-top:15px;}
         .data-table th{background-color:#8B4513;color:white;padding:12px;text-align:left;font-size:13px;}
@@ -167,6 +186,7 @@ if($approvedResult) {
             .nav-bar{flex-direction:column;}
             .data-table{overflow-x:auto;display:block;}
             .sub-tabs{flex-direction:column;}
+            .filter-dropdown{flex-direction:column;align-items:flex-start;}
         }
     </style>
 </head>
@@ -200,6 +220,17 @@ if($approvedResult) {
         <a href="fee_requests.php?view=approved" class="sub-tab <?php echo ($showApproved) ? 'active' : ''; ?>">Approved Requests</a>
     </div>
     
+    <!-- Department Filter Dropdown -->
+    <div class="filter-dropdown">
+        <label>Filter by Department:</label>
+        <select id="deptFilter" onchange="window.location.href='fee_requests.php<?php echo ($showApproved) ? '?view=approved&dept=' : '?dept='; ?>'+this.value">
+            <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
+            <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
+            <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
+            <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
+        </select>
+    </div>
+    
     <?php if(!$showApproved): ?>
         <div class="content-card">
             <h2>Pending Requests</h2>
@@ -225,8 +256,8 @@ if($approvedResult) {
                                     <td><?php echo $request['requestDate']; ?></td>
                                     <td class="reason-text"><?php echo nl2br(htmlspecialchars($request['reason'])); ?></td>
                                     <td>
-                                        <a href="fee_requests.php?approve=<?php echo $request['requestID']; ?>" class="btn-approve" onclick="return confirm('Approve this request?')">Approve</a>
-                                        <a href="fee_requests.php?reject=<?php echo $request['requestID']; ?>" class="btn-reject" onclick="return confirm('Reject this request?')">Reject</a>
+                                        <a href="fee_requests.php?approve=<?php echo $request['requestID']; ?>&dept=<?php echo $departmentFilter; ?>" class="btn-approve" onclick="return confirm('Approve this request?')">Approve</a>
+                                        <a href="fee_requests.php?reject=<?php echo $request['requestID']; ?>&dept=<?php echo $departmentFilter; ?>" class="btn-reject" onclick="return confirm('Reject this request?')">Reject</a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -234,7 +265,7 @@ if($approvedResult) {
                     </table>
                 </div>
             <?php else: ?>
-                <p>No pending fee commitment requests.</p>
+                <p>No pending fee commitment requests for the selected department.</p>
             <?php endif; ?>
         </div>
     <?php endif; ?>
@@ -270,7 +301,7 @@ if($approvedResult) {
                     </table>
                 </div>
             <?php else: ?>
-                <p>No approved fee commitment requests.</p>
+                <p>No approved fee commitment requests for the selected department.</p>
             <?php endif; ?>
         </div>
     <?php endif; ?>

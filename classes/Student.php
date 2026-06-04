@@ -117,10 +117,53 @@ class Student extends User {
         }
         return null;
     }
+
+    public function loadByStudentID($studentID) {
+        $studentID = (int)$studentID;
+        $sql = "SELECT s.*, u.name, u.email, u.phone, u.password \
+                FROM students s \
+                JOIN users u ON s.userID = u.userID \
+                WHERE s.studentID = $studentID";
+        $result = $this->db->query($sql);
+        if ($result && $result->num_rows === 1) {
+            $user = $result->fetch_assoc();
+            $this->userID = $user['userID'];
+            $this->username = $user['regNumber'];
+            $this->name = $user['name'];
+            $this->email = $user['email'];
+            $this->phone = $user['phone'];
+            $this->role = 'student';
+            $this->studentID = $user['studentID'];
+            $this->regNumber = $user['regNumber'];
+            $this->program = $user['program'];
+            $this->year = $user['year'];
+            $this->applicationStatus = $user['applicationStatus'];
+            $this->gender = $user['gender'];
+            $this->roomID = $user['allocatedRoomID'];
+
+            return true;
+        }
+        return false;
+    }
+
+    public function loadByUserID($userID) {
+        $userID = (int)$userID;
+        $sql = "SELECT studentID FROM students WHERE userID = $userID";
+        $result = $this->db->query($sql);
+        if ($result && $result->num_rows === 1) {
+            $row = $result->fetch_assoc();
+            return $this->loadByStudentID($row['studentID']);
+        }
+        return false;
+    }
     
     public function requestClearance() {
+        $studentID = (int)$this->studentID;
+        if ($studentID <= 0) {
+            return false;
+        }
         $sql = "INSERT INTO clearance (studentID, requestDate, status) 
-                VALUES ({$this->studentID}, CURDATE(), 'pending')";
+                VALUES ($studentID, CURDATE(), 'pending')";
         return $this->db->query($sql);
     }
     

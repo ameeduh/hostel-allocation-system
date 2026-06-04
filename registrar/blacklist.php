@@ -13,6 +13,21 @@ $registrarName = $_SESSION['name'];
 $message = '';
 $messageType = '';
 $showList = isset($_GET['view']) && $_GET['view'] == 'list';
+$departmentFilter = isset($_GET['dept']) ? $_GET['dept'] : 'all';
+
+// Function to build department filter WHERE clause
+function getDepartmentFilter($departmentFilter) {
+    if($departmentFilter == 'ict') {
+        return " AND regNumber LIKE '%BscICT%'";
+    } elseif($departmentFilter == 'nursing') {
+        return " AND regNumber LIKE '%BscNM%'";
+    } elseif($departmentFilter == 'business') {
+        return " AND regNumber LIKE '%BscBA%'";
+    }
+    return "";
+}
+
+$departmentWhere = getDepartmentFilter($departmentFilter);
 
 // Handle add to blacklist
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
@@ -41,12 +56,12 @@ if(isset($_GET['remove'])) {
     $blacklistID = (int)$_GET['remove'];
     $updateSql = "UPDATE blacklist SET status = 'removed' WHERE blacklistID = $blacklistID";
     $db->query($updateSql);
-    header("Location: blacklist.php?view=list");
+    header("Location: blacklist.php?view=list&dept=" . $departmentFilter);
     exit();
 }
 
-// Get blacklist students
-$blacklistSql = "SELECT * FROM blacklist WHERE status = 'active' ORDER BY dateAdded DESC";
+// Get blacklist students (with department filter)
+$blacklistSql = "SELECT * FROM blacklist WHERE status = 'active' $departmentWhere ORDER BY dateAdded DESC";
 $blacklistResult = $db->query($blacklistSql);
 $blacklistStudents = array();
 if($blacklistResult) {
@@ -79,26 +94,43 @@ if($blacklistResult) {
         .content-area{margin:15px 40px;}
         .content-card{background:white;border-radius:8px;padding:20px;border:1px solid #e0e0e0;margin-bottom:20px;}
         .content-card h2{color:#8B4513;font-size:18px;margin-bottom:15px;border-bottom:2px solid #FFD700;display:inline-block;padding-bottom:5px;}
-        .sub-tabs{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid #ddd;padding-bottom:10px;}
+        
+        .sub-tabs{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid #ddd;padding-bottom:10px;flex-wrap:wrap;}
         .sub-tab{padding:8px 20px;text-decoration:none;border-radius:5px;background:#f0f0f0;color:#333;}
         .sub-tab.active{background:#8B4513;color:white;}
+        
+        .filter-dropdown{margin-bottom:20px;display:flex;align-items:center;gap:15px;flex-wrap:wrap;}
+        .filter-dropdown label{font-weight:600;color:#8B4513;font-size:14px;}
+        .filter-dropdown select{padding:8px 15px;border:1px solid #ddd;border-radius:5px;font-size:13px;background:white;}
+        
         .form-row{display:flex;gap:15px;margin-bottom:15px;flex-wrap:wrap;}
         .form-group{flex:1;min-width:180px;}
         .form-group label{display:block;font-size:12px;font-weight:600;color:#8B4513;margin-bottom:5px;}
         .form-group input,.form-group textarea{width:100%;padding:8px;border:1px solid #ddd;border-radius:5px;}
+        
         .btn-add{background-color:#2e7d32;color:white;border:none;padding:8px 20px;border-radius:5px;cursor:pointer;}
         .btn-remove{background-color:#dc3545;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;}
+        
         .data-table{width:100%;border-collapse:collapse;margin-top:15px;}
         .data-table th{background-color:#8B4513;color:white;padding:12px;text-align:left;}
         .data-table td{padding:10px;border-bottom:1px solid #eee;}
+        
         .success-message{background-color:#d4edda;color:#155724;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;}
         .error-message{background-color:#f8d7da;color:#721c24;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;}
+        
         .footer{background-color:#8B4513;color:white;padding:25px 40px;margin-top:20px;}
         .footer-content{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:25px;}
         .footer-section h3{font-size:15px;margin-bottom:10px;color:#FFD700;}
         .footer-section p,.footer-section a{font-size:12px;color:#f0f0f0;text-decoration:none;}
         .copyright{text-align:center;padding-top:20px;margin-top:20px;border-top:1px solid rgba(255,255,255,0.2);font-size:11px;}
-        @media (max-width:768px){.top-bar,.nav-bar,.welcome-section,.content-area{padding-left:20px;padding-right:20px;}.nav-bar{flex-direction:column;}}
+        
+        @media (max-width:768px){
+            .top-bar,.nav-bar,.welcome-section,.content-area{padding-left:20px;padding-right:20px;}
+            .nav-bar{flex-direction:column;}
+            .data-table{overflow-x:auto;display:block;}
+            .sub-tabs{flex-direction:column;}
+            .filter-dropdown{flex-direction:column;align-items:flex-start;}
+        }
     </style>
 </head>
 <body>
@@ -131,6 +163,7 @@ if($blacklistResult) {
         <a href="blacklist.php?view=list" class="sub-tab <?php echo ($showList) ? 'active' : ''; ?>">Blacklisted Students</a>
     </div>
     
+    <!-- ADD TO BLACKLIST TAB -->
     <?php if(!$showList): ?>
         <div class="content-card">
             <h2>Add to Blacklist</h2>
@@ -145,9 +178,22 @@ if($blacklistResult) {
         </div>
     <?php endif; ?>
     
+    <!-- BLACKLISTED STUDENTS LIST TAB -->
     <?php if($showList): ?>
         <div class="content-card">
             <h2>Blacklisted Students</h2>
+            
+            <!-- Department Filter Dropdown -->
+            <div class="filter-dropdown">
+                <label>Filter by Department:</label>
+                <select id="deptFilter" onchange="window.location.href='blacklist.php?view=list&dept='+this.value">
+                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
+                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
+                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
+                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
+                </select>
+            </div>
+            
             <?php if(count($blacklistStudents) > 0): ?>
                 <div style="overflow-x: auto;">
                     <table class="data-table">
@@ -169,14 +215,14 @@ if($blacklistResult) {
                                     <td><?php echo htmlspecialchars($student['reason']); ?></td>
                                     <td><?php echo $student['dateAdded']; ?></td>
                                     <td><?php echo $student['addedBy']; ?></td>
-                                    <td><a href="blacklist.php?remove=<?php echo $student['blacklistID']; ?>&view=list" class="btn-remove" onclick="return confirm('Remove this student?')">Remove</a></td>
+                                    <td><a href="blacklist.php?remove=<?php echo $student['blacklistID']; ?>&view=list&dept=<?php echo $departmentFilter; ?>" class="btn-remove" onclick="return confirm('Remove this student?')">Remove</a></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
             <?php else: ?>
-                <p>No students in blacklist.</p>
+                <p>No students in blacklist for the selected department.</p>
             <?php endif; ?>
         </div>
     <?php endif; ?>

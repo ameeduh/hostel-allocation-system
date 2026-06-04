@@ -27,6 +27,7 @@ if($result && $result->num_rows > 0) {
 }
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'home';
+$departmentFilter = isset($_GET['dept']) ? $_GET['dept'] : 'all';
 
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     $phone = $db->escape($_POST['phone']);
@@ -38,6 +39,90 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
 }
 
 $profileUpdated = isset($_GET['updated']);
+
+// Handle password change
+$password_message = '';
+$password_message_type = '';
+
+if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
+    $current_password = $_POST['current_password'];
+    $new_password = $_POST['new_password'];
+    $confirm_password = $_POST['confirm_password'];
+    
+    $userSql = "SELECT password FROM users WHERE userID = " . (int)$_SESSION['user_id'];
+    $userResult = $db->query($userSql);
+    $user = $userResult->fetch_assoc();
+    
+    if(password_verify($current_password, $user['password'])) {
+        if(strlen($new_password) < 6) {
+            $password_message = "Password must be at least 6 characters long.";
+            $password_message_type = "error";
+        } elseif($new_password != $confirm_password) {
+            $password_message = "New password and confirmation do not match.";
+            $password_message_type = "error";
+        } elseif(password_verify($new_password, $user['password'])) {
+            $password_message = "New password must be different from your current password.";
+            $password_message_type = "error";
+        } else {
+            $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+            $updateSql = "UPDATE users SET password = '$hashed_password' WHERE userID = " . (int)$_SESSION['user_id'];
+            if($db->query($updateSql)) {
+                $password_message = "Password changed successfully!";
+                $password_message_type = "success";
+                
+                $emailSql = "SELECT email, name FROM users WHERE userID = " . (int)$_SESSION['user_id'];
+                $emailResult = $db->query($emailSql);
+                $user = $emailResult->fetch_assoc();
+                
+                if($user && $user['email']) {
+                    require_once '../config/mail_config.php';
+                    $subject = "Password Changed Notification";
+                    $body = "<html><body>
+                             <h2>Hostel Allocation System</h2>
+                             <p>Dear " . $user['name'] . ",</p>
+                             <p>Your password was successfully changed on " . date('Y-m-d H:i:s') . ".</p>
+                             <p>If you did not make this change, please contact the Administrator immediately.</p>
+                             </body></html>";
+                    sendEmail($user['email'], $subject, $body);
+                }
+            } else {
+                $password_message = "Failed to change password. Please try again.";
+                $password_message_type = "error";
+            }
+        }
+    } else {
+        $password_message = "Current password is incorrect.";
+        $password_message_type = "error";
+    }
+}
+
+// Function to build department filter WHERE clause
+function getDepartmentFilter($departmentFilter) {
+    if($departmentFilter == 'ict') {
+        return " AND regNumber LIKE '%BscICT%'";
+    } elseif($departmentFilter == 'nursing') {
+        return " AND regNumber LIKE '%BscNM%'";
+    } elseif($departmentFilter == 'business') {
+        return " AND regNumber LIKE '%BscBA%'";
+    }
+    return "";
+}
+
+$departmentWhere = getDepartmentFilter($departmentFilter);
+
+// Get approved students (students who passed blacklist check)
+$sql = "SELECT s.studentID, s.regNumber, s.program, s.year, u.name 
+        FROM students s 
+        JOIN users u ON s.userID = u.userID 
+        WHERE (s.registrar_status = 'approved' OR s.registrar_status IS NULL) $departmentWhere
+        ORDER BY s.studentID";
+$result = $db->query($sql);
+$approvedStudents = array();
+if($result) {
+    while($row = $result->fetch_assoc()) {
+        $approvedStudents[] = $row;
+    }
+}
 
 // Stats for home page
 $totalStudents = 0;
@@ -57,13 +142,7 @@ if($feeCountResult) {
 }
 
 // Approved students count
-$approvedCount = 0;
-$approvedCountSql = "SELECT COUNT(*) as total FROM students WHERE registrar_status = 'approved'";
-$approvedCountResult = $db->query($approvedCountSql);
-if($approvedCountResult) {
-    $row = $approvedCountResult->fetch_assoc();
-    $approvedCount = $row['total'];
-}
+$approvedCount = count($approvedStudents);
 
 // Blacklisted students count
 $blacklistCount = 0;
@@ -104,6 +183,11 @@ if($blacklistResult) {
         .stat-number{font-size:28px;font-weight:bold;color:#8B4513;}
         .stat-label{font-size:12px;color:#666;margin-top:5px;}
         
+        .filter-dropdown{margin-bottom:20px;display:flex;align-items:center;gap:15px;flex-wrap:wrap;}
+        .filter-dropdown label{font-weight:600;color:#8B4513;font-size:14px;}
+        .filter-dropdown select{padding:8px 15px;border:1px solid #ddd;border-radius:5px;font-size:13px;background:white;}
+        .filter-dropdown select:focus{border-color:#8B4513;outline:none;}
+        
         .data-table{width:100%;border-collapse:collapse;margin-top:15px;}
         .data-table th{background-color:#8B4513;color:white;padding:12px;text-align:left;font-size:13px;}
         .data-table td{padding:10px;border-bottom:1px solid #eee;font-size:13px;}
@@ -118,19 +202,23 @@ if($blacklistResult) {
         .form-group input{width:100%;padding:8px;border:1px solid #ddd;border-radius:5px;font-size:13px;}
         .submit-btn{background-color:#8B4513;color:white;padding:8px 20px;border:none;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px;}
         
+        .success-message{background-color:#d4edda;color:#155724;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
+        .error-message{background-color:#f8d7da;color:#721c24;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
+        
         .footer{background-color:#8B4513;color:white;padding:25px 40px;margin-top:20px;}
         .footer-content{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:25px;}
         .footer-section h3{font-size:15px;margin-bottom:10px;color:#FFD700;}
         .footer-section p,.footer-section a{font-size:12px;color:#f0f0f0;text-decoration:none;line-height:1.6;}
         .footer-section a:hover{color:#FFD700;}
         .copyright{text-align:center;padding-top:20px;margin-top:20px;border-top:1px solid rgba(255,255,255,0.2);font-size:11px;}
-        .success-message{background-color:#e8f5e9;color:#2e7d32;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
         
         @media (max-width:768px){
             .top-bar,.nav-bar,.welcome-section,.content-area{padding-left:20px;padding-right:20px;margin-left:20px;margin-right:20px;}
             .nav-bar{flex-direction:column;gap:10px;}
             .nav-links{justify-content:center;}
             .stats-cards{flex-direction:column;}
+            .filter-dropdown{flex-direction:column;align-items:flex-start;}
+            .data-table{overflow-x:auto;display:block;}
         }
     </style>
 </head>
@@ -173,21 +261,20 @@ if($blacklistResult) {
         
     <!-- APPROVED STUDENTS PAGE -->
     <?php elseif($page == 'approved'): ?>
-        <?php
-        $sql = "SELECT s.studentID, s.regNumber, s.program, s.year, u.name 
-                FROM students s 
-                JOIN users u ON s.userID = u.userID 
-                WHERE s.registrar_status = 'approved'";
-        $result = $db->query($sql);
-        $approvedStudents = array();
-        if($result) {
-            while($row = $result->fetch_assoc()) {
-                $approvedStudents[] = $row;
-            }
-        }
-        ?>
         <div class="content-card">
             <h2>Approved Students</h2>
+            
+            <!-- Department Filter Dropdown -->
+            <div class="filter-dropdown">
+                <label>Filter by Department:</label>
+                <select id="deptFilter" onchange="window.location.href='?page=approved&dept='+this.value">
+                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
+                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
+                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
+                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
+                </select>
+            </div>
+            
             <?php if(count($approvedStudents) > 0): ?>
                 <div style="overflow-x: auto;">
                     <table class="data-table">
@@ -212,7 +299,7 @@ if($blacklistResult) {
                     </table>
                 </div>
             <?php else: ?>
-                <p>No approved students yet.</p>
+                <p>No approved students found for the selected department.</p>
             <?php endif; ?>
         </div>
         
@@ -224,6 +311,7 @@ if($blacklistResult) {
             <div class="profile-field"><label>Email Address</label><p><?php echo $userData['email'] ?: 'Not set'; ?></p></div>
             <div class="profile-field"><label>Phone Number</label><p><?php echo $userData['phone'] ?: 'Not set'; ?></p></div>
             <div class="profile-field"><label>Role</label><p>Registrar</p></div>
+            
             <h3 style="margin:20px 0 10px 0; color:#8B4513;">Update Contact Information</h3>
             <form method="POST">
                 <div class="form-row">
@@ -231,6 +319,31 @@ if($blacklistResult) {
                     <div class="form-group"><label>Email Address</label><input type="email" name="email" value="<?php echo $userData['email']; ?>"></div>
                 </div>
                 <button type="submit" name="update_profile" class="submit-btn">Update Profile</button>
+            </form>
+            
+            <h3 style="margin:25px 0 10px 0; color:#8B4513;">Change Password</h3>
+            <?php if($password_message): ?>
+                <div class="<?php echo $password_message_type; ?>-message" style="margin-bottom:15px;"><?php echo $password_message; ?></div>
+            <?php endif; ?>
+            <form method="POST">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Current Password</label>
+                        <input type="password" name="current_password" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>New Password</label>
+                        <input type="password" name="new_password" required>
+                        <small style="color:#666;">Minimum 6 characters</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Confirm New Password</label>
+                        <input type="password" name="confirm_password" required>
+                    </div>
+                </div>
+                <button type="submit" name="change_password" class="submit-btn">Change Password</button>
             </form>
         </div>
     <?php endif; ?>

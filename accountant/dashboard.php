@@ -28,6 +28,7 @@ if($result && $result->num_rows > 0) {
 }
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'home';
+$departmentFilter = isset($_GET['dept']) ? $_GET['dept'] : 'all';
 
 // Handle approve/reject actions with auto room assignment
 if($_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -66,18 +67,27 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $checkFullSql = "UPDATE rooms SET status = 'full' WHERE roomID = $preferredRoomID AND availableBeds = 0";
                 $db->query($checkFullSql);
                 
-                // Send email
+                // Send email notification to student
                 $studentSql = "SELECT u.email, u.name FROM students s JOIN users u ON s.userID = u.userID WHERE s.studentID = $studentID";
                 $studentResult = $db->query($studentSql);
                 $student = $studentResult->fetch_assoc();
                 
                 if($student && $student['email']) {
                     require_once '../config/mail_config.php';
+                    
                     $subject = "Room Allocation Confirmation";
-                    $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $student['name'] . ",</p><p>Congratulations! Your room has been allocated.</p><p><strong>Room Number:</strong> " . $room['roomNumber'] . "</p><p><strong>Hostel:</strong> " . $room['hostelName'] . "</p><p>Please visit the Warden's office to collect your room key.</p></body></html>";
+                    $body = "<html><body>
+                             <h2>Hostel Allocation System</h2>
+                             <p>Dear " . $student['name'] . ",</p>
+                             <p>Congratulations! Your room has been allocated.</p>
+                             <p><strong>Room Number:</strong> " . $room['roomNumber'] . "</p>
+                             <p><strong>Hostel:</strong> " . $room['hostelName'] . "</p>
+                             <p>Please visit the Warden's office to collect your room key.</p>
+                             </body></html>";
                     sendEmail($student['email'], $subject, $body);
                 }
             } else {
+                // Preferred room is full - student must choose another
                 $updatePrefSql = "UPDATE room_preferences SET status = 'full' WHERE studentID = $studentID";
                 $db->query($updatePrefSql);
                 
@@ -92,7 +102,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                 if($student && $student['email']) {
                     require_once '../config/mail_config.php';
                     $subject = "Room Selection Required";
-                    $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $student['name'] . ",</p><p>Your fees have been verified, but your preferred room is now full.</p><p>Please log in and select another room.</p></body></html>";
+                    $body = "<html><body>
+                             <h2>Hostel Allocation System</h2>
+                             <p>Dear " . $student['name'] . ",</p>
+                             <p>Your fees have been verified, but your preferred room is now full.</p>
+                             <p>Please log in and select another room.</p>
+                             </body></html>";
                     sendEmail($student['email'], $subject, $body);
                 }
             }
@@ -130,11 +145,81 @@ $profileUpdated = isset($_GET['updated']);
 $approved = isset($_GET['approved']);
 $rejected = isset($_GET['rejected']);
 
+// Handle password change
+$password_message = '';
+$password_message_type = '';
+
+if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
+    $current_password = $_POST['current_password'];
+    $new_password = $_POST['new_password'];
+    $confirm_password = $_POST['confirm_password'];
+    
+    $userSql = "SELECT password FROM users WHERE userID = " . (int)$_SESSION['user_id'];
+    $userResult = $db->query($userSql);
+    $user = $userResult->fetch_assoc();
+    
+    if(password_verify($current_password, $user['password'])) {
+        if(strlen($new_password) < 6) {
+            $password_message = "Password must be at least 6 characters long.";
+            $password_message_type = "error";
+        } elseif($new_password != $confirm_password) {
+            $password_message = "New password and confirmation do not match.";
+            $password_message_type = "error";
+        } elseif(password_verify($new_password, $user['password'])) {
+            $password_message = "New password must be different from your current password.";
+            $password_message_type = "error";
+        } else {
+            $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+            $updateSql = "UPDATE users SET password = '$hashed_password' WHERE userID = " . (int)$_SESSION['user_id'];
+            if($db->query($updateSql)) {
+                $password_message = "Password changed successfully!";
+                $password_message_type = "success";
+                
+                $emailSql = "SELECT email, name FROM users WHERE userID = " . (int)$_SESSION['user_id'];
+                $emailResult = $db->query($emailSql);
+                $user = $emailResult->fetch_assoc();
+                
+                if($user && $user['email']) {
+                    require_once '../config/mail_config.php';
+                    $subject = "Password Changed Notification";
+                    $body = "<html><body>
+                             <h2>Hostel Allocation System</h2>
+                             <p>Dear " . $user['name'] . ",</p>
+                             <p>Your password was successfully changed on " . date('Y-m-d H:i:s') . ".</p>
+                             <p>If you did not make this change, please contact the Administrator immediately.</p>
+                             </body></html>";
+                    sendEmail($user['email'], $subject, $body);
+                }
+            } else {
+                $password_message = "Failed to change password. Please try again.";
+                $password_message_type = "error";
+            }
+        }
+    } else {
+        $password_message = "Current password is incorrect.";
+        $password_message_type = "error";
+    }
+}
+
+// Function to build department filter WHERE clause
+function getDepartmentFilter($departmentFilter) {
+    if($departmentFilter == 'ict') {
+        return " AND s.regNumber LIKE '%BscICT%'";
+    } elseif($departmentFilter == 'nursing') {
+        return " AND s.regNumber LIKE '%BscNM%'";
+    } elseif($departmentFilter == 'business') {
+        return " AND s.regNumber LIKE '%BscBA%'";
+    }
+    return "";
+}
+
+$departmentWhere = getDepartmentFilter($departmentFilter);
+
 // Get pending students
 $pendingSql = "SELECT s.studentID, s.regNumber, s.program, s.year, s.gender, s.fee_commitment, u.name 
                FROM students s 
                JOIN users u ON s.userID = u.userID 
-               WHERE s.applicationStatus = 'pending' 
+               WHERE s.applicationStatus = 'pending' $departmentWhere
                ORDER BY s.studentID";
 $pendingResult = $db->query($pendingSql);
 $pendingStudents = array();
@@ -149,7 +234,7 @@ $feeCommitmentSql = "SELECT s.studentID, s.regNumber, s.program, s.year, s.gende
                      FROM students s 
                      JOIN users u ON s.userID = u.userID 
                      WHERE s.fee_commitment = 1 
-                     AND (s.fee_commitment_status = 'pending' OR s.fee_commitment_status IS NULL)
+                     AND (s.fee_commitment_status = 'pending' OR s.fee_commitment_status IS NULL) $departmentWhere
                      ORDER BY s.studentID";
 $feeCommitmentResult = $db->query($feeCommitmentSql);
 $feeCommitmentStudents = array();
@@ -163,7 +248,7 @@ if($feeCommitmentResult) {
 $verifiedSql = "SELECT s.studentID, s.regNumber, s.program, s.year, s.gender, u.name 
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
-                WHERE s.applicationStatus = 'approved' 
+                WHERE s.applicationStatus = 'approved' $departmentWhere
                 ORDER BY s.studentID";
 $verifiedResult = $db->query($verifiedSql);
 $verifiedStudents = array();
@@ -215,6 +300,11 @@ $verifiedCount = count($verifiedStudents);
         .stat-number{font-size:28px;font-weight:bold;color:#8B4513;}
         .stat-label{font-size:12px;color:#666;margin-top:5px;}
         
+        .filter-dropdown{margin-bottom:20px;display:flex;align-items:center;gap:15px;flex-wrap:wrap;}
+        .filter-dropdown label{font-weight:600;color:#8B4513;font-size:14px;}
+        .filter-dropdown select{padding:8px 15px;border:1px solid #ddd;border-radius:5px;font-size:13px;background:white;}
+        .filter-dropdown select:focus{border-color:#8B4513;outline:none;}
+        
         .data-table{width:100%;border-collapse:collapse;margin-top:15px;}
         .data-table th{background-color:#8B4513;color:white;padding:12px;text-align:left;font-size:13px;}
         .data-table td{padding:10px;border-bottom:1px solid #eee;font-size:13px;}
@@ -224,6 +314,7 @@ $verifiedCount = count($verifiedStudents);
         .btn-reject{background-color:#c62828;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;}
         .status-badge{background-color:#e8f5e9;color:#2e7d32;padding:3px 8px;border-radius:4px;display:inline-block;}
         .fee-badge{background-color:#fff3cd;color:#856404;padding:3px 8px;border-radius:4px;display:inline-block;}
+        
         .profile-field{padding:10px;border-bottom:1px solid #eee;}
         .profile-field label{font-size:12px;color:#666;display:block;margin-bottom:3px;}
         .profile-field p{font-size:15px;font-weight:500;color:#333;}
@@ -232,13 +323,16 @@ $verifiedCount = count($verifiedStudents);
         .form-group label{display:block;font-size:12px;font-weight:600;color:#8B4513;margin-bottom:4px;}
         .form-group input{width:100%;padding:8px;border:1px solid #ddd;border-radius:5px;font-size:13px;}
         .submit-btn{background-color:#8B4513;color:white;padding:8px 20px;border:none;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px;}
+        
+        .success-message{background-color:#d4edda;color:#155724;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
+        .error-message{background-color:#f8d7da;color:#721c24;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
+        
         .footer{background-color:#8B4513;color:white;padding:25px 40px;margin-top:20px;}
         .footer-content{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:25px;}
         .footer-section h3{font-size:15px;margin-bottom:10px;color:#FFD700;}
         .footer-section p,.footer-section a{font-size:12px;color:#f0f0f0;text-decoration:none;line-height:1.6;}
         .footer-section a:hover{color:#FFD700;}
         .copyright{text-align:center;padding-top:20px;margin-top:20px;border-top:1px solid rgba(255,255,255,0.2);font-size:11px;}
-        .success-message{background-color:#e8f5e9;color:#2e7d32;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
         
         @media (max-width:768px){
             .top-bar,.nav-bar,.welcome-section,.content-area{padding-left:20px;padding-right:20px;margin-left:20px;margin-right:20px;}
@@ -246,6 +340,7 @@ $verifiedCount = count($verifiedStudents);
             .nav-links{justify-content:center;}
             .stats-cards{flex-direction:column;}
             .data-table{overflow-x:auto;display:block;}
+            .filter-dropdown{flex-direction:column;align-items:flex-start;}
         }
     </style>
 </head>
@@ -295,6 +390,17 @@ $verifiedCount = count($verifiedStudents);
     <?php elseif($page == 'pending'): ?>
         <div class="content-card">
             <h2>Pending Students</h2>
+            
+            <div class="filter-dropdown">
+                <label>Filter by Department:</label>
+                <select id="deptFilter" onchange="window.location.href='?page=pending&dept='+this.value">
+                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
+                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
+                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
+                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
+                </select>
+            </div>
+            
             <?php if(count($pendingStudents) > 0): ?>
                 <table class="data-table">
                     <thead>
@@ -311,7 +417,7 @@ $verifiedCount = count($verifiedStudents);
                         <tr>
                             <td><?php echo htmlspecialchars($student['name']); ?></td>
                             <td><?php echo htmlspecialchars($student['program']); ?></td>
-                            <td><?php echo $student['year']; ?> Year</td>
+                            <td><?php echo $student['year']; ?> Year</td
                             <td><?php echo $student['gender']; ?></td>
                             <td>
                                 <form method="POST" style="display:inline;">
@@ -328,7 +434,7 @@ $verifiedCount = count($verifiedStudents);
                     </tbody>
                 </table>
             <?php else: ?>
-                <p>No pending students.</p>
+                <p>No pending students found for the selected department.</p>
             <?php endif; ?>
         </div>
         
@@ -336,6 +442,17 @@ $verifiedCount = count($verifiedStudents);
     <?php elseif($page == 'fee_commitment'): ?>
         <div class="content-card">
             <h2>Fee Commitment Students (Added by Registrar)</h2>
+            
+            <div class="filter-dropdown">
+                <label>Filter by Department:</label>
+                <select id="deptFilterFee" onchange="window.location.href='?page=fee_commitment&dept='+this.value">
+                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
+                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
+                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
+                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
+                </select>
+            </div>
+            
             <?php if(count($feeCommitmentStudents) > 0): ?>
                 <table class="data-table">
                     <thead>
@@ -354,7 +471,7 @@ $verifiedCount = count($verifiedStudents);
                         <tr>
                             <td><?php echo htmlspecialchars($student['name']); ?></td>
                             <td><?php echo htmlspecialchars($student['program']); ?></td>
-                            <td><?php echo $student['year']; ?> Year</td>
+                            <td><?php echo $student['year']; ?> Year</td
                             <td><?php echo $student['gender']; ?></td>
                             <td><?php echo htmlspecialchars($student['fee_commitment_note']); ?></td>
                             <td><span class="fee-badge">Pending</span></td>
@@ -373,7 +490,7 @@ $verifiedCount = count($verifiedStudents);
                     </tbody>
                 </table>
             <?php else: ?>
-                <p>No fee commitment students from Registrar.</p>
+                <p>No fee commitment students found for the selected department.</p>
             <?php endif; ?>
         </div>
         
@@ -381,6 +498,17 @@ $verifiedCount = count($verifiedStudents);
     <?php elseif($page == 'verified'): ?>
         <div class="content-card">
             <h2>Verified Students</h2>
+            
+            <div class="filter-dropdown">
+                <label>Filter by Department:</label>
+                <select id="deptFilterVerified" onchange="window.location.href='?page=verified&dept='+this.value">
+                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
+                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
+                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
+                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
+                </select>
+            </div>
+            
             <?php if(count($verifiedStudents) > 0): ?>
                 <table class="data-table">
                     <thead>
@@ -394,10 +522,10 @@ $verifiedCount = count($verifiedStudents);
                     </thead>
                     <tbody>
                         <?php foreach($verifiedStudents as $student): ?>
-                        <tr>
+                        <td>
                             <td><?php echo htmlspecialchars($student['name']); ?></td>
                             <td><?php echo htmlspecialchars($student['program']); ?></td>
-                            <td><?php echo $student['year']; ?> Year</td>
+                            <td><?php echo $student['year']; ?> Year</td
                             <td><?php echo $student['gender']; ?></td>
                             <td><span class="status-badge">Approved</span></td>
                         </tr>
@@ -405,7 +533,7 @@ $verifiedCount = count($verifiedStudents);
                     </tbody>
                 </table>
             <?php else: ?>
-                <p>No verified students.</p>
+                <p>No verified students found for the selected department.</p>
             <?php endif; ?>
         </div>
         
@@ -417,6 +545,7 @@ $verifiedCount = count($verifiedStudents);
             <div class="profile-field"><label>Email Address</label><p><?php echo $userData['email'] ?: 'Not set'; ?></p></div>
             <div class="profile-field"><label>Phone Number</label><p><?php echo $userData['phone'] ?: 'Not set'; ?></p></div>
             <div class="profile-field"><label>Role</label><p>Accountant</p></div>
+            
             <h3 style="margin:20px 0 10px 0; color:#8B4513;">Update Contact Information</h3>
             <form method="POST">
                 <div class="form-row">
@@ -424,6 +553,31 @@ $verifiedCount = count($verifiedStudents);
                     <div class="form-group"><label>Email Address</label><input type="email" name="email" value="<?php echo $userData['email']; ?>"></div>
                 </div>
                 <button type="submit" name="update_profile" class="submit-btn">Update Profile</button>
+            </form>
+            
+            <h3 style="margin:25px 0 10px 0; color:#8B4513;">Change Password</h3>
+            <?php if($password_message): ?>
+                <div class="<?php echo $password_message_type; ?>-message" style="margin-bottom:15px;"><?php echo $password_message; ?></div>
+            <?php endif; ?>
+            <form method="POST">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Current Password</label>
+                        <input type="password" name="current_password" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>New Password</label>
+                        <input type="password" name="new_password" required>
+                        <small style="color:#666;">Minimum 6 characters</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Confirm New Password</label>
+                        <input type="password" name="confirm_password" required>
+                    </div>
+                </div>
+                <button type="submit" name="change_password" class="submit-btn">Change Password</button>
             </form>
         </div>
     <?php endif; ?>
