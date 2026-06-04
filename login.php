@@ -1,26 +1,32 @@
 <?php
 session_start();
 
-// Autoload classes
-spl_autoload_register(function($class_name) {
-    include 'classes/' . $class_name . '.php';
-});
+// Include all classes manually
+require_once 'classes/User.php';
+require_once 'classes/Student.php';
+require_once 'classes/Accountant.php';
+require_once 'classes/Registrar.php';
+require_once 'classes/Warden.php';
+require_once 'classes/Admin.php';
 
 // If already logged in, redirect
 if(isset($_SESSION['user_id'])) {
-    $role = $_SESSION['role'];
-    if($role == 'student') {
+    if($_SESSION['role'] == 'student') {
         header("Location: student/dashboard.php");
-    } elseif($role == 'accounts') {
+        exit();
+    } elseif($_SESSION['role'] == 'accounts') {
         header("Location: accountant/dashboard.php");
-    } elseif($role == 'warden') {
+        exit();
+    } elseif($_SESSION['role'] == 'warden') {
         header("Location: warden/dashboard.php");
-    } elseif($role == 'admin') {
+        exit();
+    } elseif($_SESSION['role'] == 'admin') {
         header("Location: admin/dashboard.php");
-    } elseif($role == 'registrar') {
+        exit();
+    } elseif($_SESSION['role'] == 'registrar') {
         header("Location: registrar/dashboard.php");
+        exit();
     }
-    exit();
 }
 
 $error = '';
@@ -29,35 +35,31 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
     
-    // Try Student login
+    // Try each role
     $student = new Student();
     if($student->login($username, $password)) {
         header("Location: student/dashboard.php");
         exit();
     }
     
-    // Try Accountant login
     $accountant = new Accountant();
     if($accountant->login($username, $password)) {
         header("Location: accountant/dashboard.php");
         exit();
     }
     
-    // Try Warden login
     $warden = new Warden();
     if($warden->login($username, $password)) {
         header("Location: warden/dashboard.php");
         exit();
     }
     
-    // Try Admin login
     $admin = new Admin();
     if($admin->login($username, $password)) {
         header("Location: admin/dashboard.php");
         exit();
     }
     
-    // Try Registrar login
     $registrar = new Registrar();
     if($registrar->login($username, $password)) {
         header("Location: registrar/dashboard.php");
@@ -100,7 +102,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             border-top: 5px solid #FFD700;
         }
 
-        /* Logo */
         .logo {
             margin-bottom: 35px;
         }

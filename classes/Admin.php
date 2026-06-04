@@ -8,17 +8,17 @@ class Admin extends User {
     public function login($username, $password) {
         $username = $this->db->escape($username);
         
-        // Query from admins table joined with users
-        $sql = "SELECT a.*, u.name, u.email, u.phone 
+        $sql = "SELECT a.*, u.name, u.email, u.phone, u.password 
                 FROM admins a 
                 JOIN users u ON a.userID = u.userID 
-                WHERE u.username = '$username'";
+                WHERE u.username = '$username' AND u.role = 'admin'";
+        
         $result = $this->db->query($sql);
         
-        if ($result && $result->num_rows == 1) {
+        if ($result && $result->num_rows === 1) {
             $user = $result->fetch_assoc();
-            // Plain text password check (use password_verify() in production)
-            if ($password == 'password123') {
+            
+            if (password_verify($password, $user['password'])) {
                 $this->userID = $user['userID'];
                 $this->username = $user['username'];
                 $this->name = $user['name'];
@@ -39,61 +39,69 @@ class Admin extends User {
         return false;
     }
     
-    // Add Accountant
     public function addAccountant($data) {
+        $hashedPassword = password_hash('default123', PASSWORD_DEFAULT);
+        
         $username = $this->db->escape($data['username']);
         $name = $this->db->escape($data['name']);
         $email = $this->db->escape($data['email']);
         $phone = $this->db->escape($data['phone']);
         $department = $this->db->escape($data['department']);
         
-        // Insert into users table
         $sql1 = "INSERT INTO users (username, password, name, email, phone, role) 
-                 VALUES ('$username', 'password123', '$name', '$email', '$phone', 'accounts')";
-        $this->db->query($sql1);
-        $userID = $this->db->getInsertId();
+                 VALUES ('$username', '$hashedPassword', '$name', '$email', '$phone', 'accounts')";
         
-        // Insert into accountants table
-        $sql2 = "INSERT INTO accountants (userID, department) VALUES ($userID, '$department')";
-        return $this->db->query($sql2);
+        if ($this->db->query($sql1)) {
+            $userID = $this->db->getInsertId();
+            
+            $sql2 = "INSERT INTO accountants (userID, department) VALUES ($userID, '$department')";
+            return $this->db->query($sql2);
+        }
+        return false;
     }
     
-    // Add Warden
     public function addWarden($data) {
+        $hashedPassword = password_hash('default123', PASSWORD_DEFAULT);
+        
         $username = $this->db->escape($data['username']);
         $name = $this->db->escape($data['name']);
         $email = $this->db->escape($data['email']);
         $phone = $this->db->escape($data['phone']);
         $hostelAssigned = $this->db->escape($data['hostelAssigned']);
         
-        // Insert into users table
         $sql1 = "INSERT INTO users (username, password, name, email, phone, role) 
-                 VALUES ('$username', 'password123', '$name', '$email', '$phone', 'warden')";
-        $this->db->query($sql1);
-        $userID = $this->db->getInsertId();
+                 VALUES ('$username', '$hashedPassword', '$name', '$email', '$phone', 'warden')";
         
-        // Insert into wardens table
-        $sql2 = "INSERT INTO wardens (userID, hostelAssigned) VALUES ($userID, '$hostelAssigned')";
-        return $this->db->query($sql2);
-    }
-    
-    // View all users
-    public function viewAllUsers() {
-        $sql = "SELECT userID, username, name, email, phone, role FROM users";
-        $result = $this->db->query($sql);
-        if ($result && $result->num_rows > 0) {
-            return $result->fetch_all(MYSQLI_ASSOC);
+        if ($this->db->query($sql1)) {
+            $userID = $this->db->getInsertId();
+            
+            $sql2 = "INSERT INTO wardens (userID, hostelAssigned) VALUES ($userID, '$hostelAssigned')";
+            return $this->db->query($sql2);
         }
-        return [];
+        return false;
     }
     
-    // Delete user
+    public function viewAllUsers() {
+        $sql = "SELECT userID, username, name, email, phone, role FROM users ORDER BY role, name";
+        $result = $this->db->query($sql);
+        $users = array();
+        if($result) {
+            while($row = $result->fetch_assoc()) {
+                $users[] = $row;
+            }
+        }
+        return $users;
+    }
+    
     public function deleteUser($userID) {
+        if ($userID == $this->userID) {
+            return false;
+        }
+        
         $sql = "DELETE FROM users WHERE userID = $userID";
         return $this->db->query($sql);
     }
     
-    // Add Room
     public function addRoom($data) {
         $roomNumber = $this->db->escape($data['roomNumber']);
         $hostelName = $this->db->escape($data['hostelName']);
@@ -106,33 +114,43 @@ class Admin extends User {
         return $this->db->query($sql);
     }
     
-    // View all rooms
     public function viewAllRooms() {
-        $sql = "SELECT * FROM rooms";
+        $sql = "SELECT * FROM rooms ORDER BY hostelName, roomNumber";
         $result = $this->db->query($sql);
-        if ($result && $result->num_rows > 0) {
-            return $result->fetch_all(MYSQLI_ASSOC);
+        $rooms = array();
+        if($result) {
+            while($row = $result->fetch_assoc()) {
+                $rooms[] = $row;
+            }
         }
-        return [];
+        return $rooms;
     }
     
-    // Delete room
     public function deleteRoom($roomID) {
+        $checkSql = "SELECT COUNT(*) as count FROM students WHERE allocatedRoomID = $roomID AND allocationStatus = 'active'";
+        $checkResult = $this->db->query($checkSql);
+        $check = $checkResult->fetch_assoc();
+        
+        if ($check['count'] > 0) {
+            return false;
+        }
+        
         $sql = "DELETE FROM rooms WHERE roomID = $roomID";
         return $this->db->query($sql);
     }
     
-    // View all students report
     public function viewAllStudentsReport() {
-        $sql = "SELECT s.*, u.name FROM students s JOIN users u ON s.userID = u.userID";
+        $sql = "SELECT s.*, u.name FROM students s JOIN users u ON s.userID = u.userID ORDER BY u.name";
         $result = $this->db->query($sql);
-        if ($result && $result->num_rows > 0) {
-            return $result->fetch_all(MYSQLI_ASSOC);
+        $students = array();
+        if($result) {
+            while($row = $result->fetch_assoc()) {
+                $students[] = $row;
+            }
         }
-        return [];
+        return $students;
     }
     
-    // View dashboard stats
     public function viewDashboard() {
         $data = [];
         

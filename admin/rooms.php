@@ -11,12 +11,12 @@ $db = new Database();
 
 // Handle add room
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_room'])) {
-    $roomNumber = $_POST['roomNumber'];
-    $hostelName = $_POST['hostelName'];
-    $gender = $_POST['gender'];
+    $roomNumber = $db->escape(trim($_POST['roomNumber']));
+    $hostelName = $db->escape(trim($_POST['hostelName']));
+    $gender = $db->escape(trim($_POST['gender']));
     $capacity = (int)$_POST['capacity'];
-    $availableBeds = $capacity;
-    
+    $availableBeds = max(0, $capacity);
+
     $sql = "INSERT INTO rooms (roomNumber, hostelName, gender, capacity, availableBeds, status) 
             VALUES ('$roomNumber', '$hostelName', '$gender', $capacity, $availableBeds, 'available')";
     $db->query($sql);
@@ -36,7 +36,11 @@ if(isset($_GET['delete'])) {
 // Get all rooms
 $sql = "SELECT * FROM rooms ORDER BY hostelName, roomNumber";
 $result = $db->query($sql);
-$rooms = $result->fetch_all(MYSQLI_ASSOC);
+if ($result && is_object($result) && method_exists($result, 'fetch_all')) {
+    $rooms = $result->fetch_all(MYSQLI_ASSOC);
+} else {
+    $rooms = array();
+}
 
 $added = isset($_GET['added']);
 $deleted = isset($_GET['deleted']);

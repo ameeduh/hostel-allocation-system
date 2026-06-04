@@ -8,19 +8,19 @@ if(!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
 require_once '../config/database.php';
 
 $db = new Database();
-
-// Get user data
-$sql = "SELECT name, email, phone FROM users WHERE userID = " . $_SESSION['user_id'];
+$sql = "SELECT name, email, phone FROM users WHERE userID = {$_SESSION['user_id']}";
 $result = $db->query($sql);
 $userData = $result->fetch_assoc();
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'home';
+$selectedReport = isset($_GET['report']) ? $_GET['report'] : 'students';
 
 // Handle profile update
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     $phone = $_POST['phone'];
     $email = $_POST['email'];
-    $sql = "UPDATE users SET phone = '$phone', email = '$email' WHERE userID = " . $_SESSION['user_id'];
+    
+    $sql = "UPDATE users SET phone = '$phone', email = '$email' WHERE userID = {$_SESSION['user_id']}";
     $db->query($sql);
     header("Location: dashboard.php?page=profile&updated=1");
     exit();
@@ -37,7 +37,7 @@ if($page == 'rooms' && $_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add
     $sql = "INSERT INTO rooms (roomNumber, hostelName, gender, capacity, availableBeds, status) 
             VALUES ('$roomNumber', '$hostelName', '$gender', $capacity, $availableBeds, 'available')";
     $db->query($sql);
-    header("Location: dashboard.php?page=rooms&action=list&added=1");
+    header("Location: dashboard.php?page=rooms&added=1");
     exit();
 }
 
@@ -46,7 +46,7 @@ if($page == 'rooms' && isset($_GET['delete'])) {
     $roomID = (int)$_GET['delete'];
     $sql = "DELETE FROM rooms WHERE roomID = $roomID";
     $db->query($sql);
-    header("Location: dashboard.php?page=rooms&action=list&deleted=1");
+    header("Location: dashboard.php?page=rooms&deleted=1");
     exit();
 }
 
@@ -56,10 +56,10 @@ if($page == 'users' && isset($_GET['delete'])) {
     if($userID != $_SESSION['user_id']) {
         $sql = "DELETE FROM users WHERE userID = $userID";
         $db->query($sql);
-        header("Location: dashboard.php?page=users&action=list&deleted=1");
+        header("Location: dashboard.php?page=users&deleted=1");
         exit();
     } else {
-        header("Location: dashboard.php?page=users&action=list&error=1");
+        header("Location: dashboard.php?page=users&error=1");
         exit();
     }
 }
@@ -69,13 +69,11 @@ $added = isset($_GET['added']);
 $deleted = isset($_GET['deleted']);
 $userDeleted = isset($_GET['deleted']);
 $userError = isset($_GET['error']);
-$selectedReport = isset($_GET['report']) ? $_GET['report'] : 'students';
 
 // Fetch data for reports
-$allStudents = array();
-$allRooms = array();
-$pendingStudents = array();
-$allUsers = array();
+$allStudents = [];
+$allRooms = [];
+$pendingStudents = [];
 
 $studentsResult = $db->query("SELECT s.*, u.name FROM students s JOIN users u ON s.userID = u.userID ORDER BY u.name");
 if($studentsResult) {
@@ -84,24 +82,21 @@ if($studentsResult) {
     }
 }
 
-$roomsResult = $db->query("SELECT * FROM rooms ORDER BY hostelName, roomNumber");
+$roomsResult = $db->query("SELECT roomID, roomNumber, hostelName, gender, capacity, availableBeds, 
+                                (capacity - availableBeds) as occupiedBeds, status 
+                         FROM rooms ORDER BY hostelName, roomNumber");
 if($roomsResult) {
     while($row = $roomsResult->fetch_assoc()) {
         $allRooms[] = $row;
     }
 }
 
-$pendingResult = $db->query("SELECT s.*, u.name FROM students s JOIN users u ON s.userID = u.userID WHERE s.applicationStatus = 'pending'");
+$pendingResult = $db->query("SELECT s.*, u.name FROM students s 
+                            JOIN users u ON s.userID = u.userID 
+                            WHERE s.applicationStatus = 'pending'");
 if($pendingResult) {
     while($row = $pendingResult->fetch_assoc()) {
         $pendingStudents[] = $row;
-    }
-}
-
-$usersResult = $db->query("SELECT userID, username, name, email, phone, role FROM users ORDER BY role, name");
-if($usersResult) {
-    while($row = $usersResult->fetch_assoc()) {
-        $allUsers[] = $row;
     }
 }
 ?>
@@ -115,29 +110,20 @@ if($usersResult) {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5; }
-        
         .top-bar { background-color: #8B4513; color: white; padding: 12px 40px; display: flex; justify-content: space-between; align-items: center; }
         .prayer-love { font-size: 14px; }
         .solideo { font-size: 14px; font-weight: 500; }
-        
         .nav-bar { background-color: white; padding: 12px 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; border-bottom: 2px solid #8B4513; }
         .university-name { font-size: 20px; font-weight: 700; color: #8B4513; }
         .nav-links { display: flex; gap: 20px; flex-wrap: wrap; }
         .nav-links a { text-decoration: none; color: #333; font-size: 14px; font-weight: 500; padding: 6px 12px; transition: all 0.3s; }
         .nav-links a:hover { color: #8B4513; }
         .nav-links a.active { color: #8B4513; border-bottom: 2px solid #FFD700; }
-        
         .welcome-section { background-color: white; margin: 20px 40px; padding: 15px 25px; border-radius: 5px; border-left: 5px solid #FFD700; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .welcome-section h1 { font-size: 20px; color: #333; margin-bottom: 5px; }
-        .welcome-section p { font-size: 13px; color: #666; }
-        
         .content-area { margin: 20px 40px; min-height: 400px; }
         .content-card { background: white; border-radius: 5px; padding: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .content-card h2 { color: #8B4513; font-size: 20px; margin-bottom: 20px; border-left: 4px solid #FFD700; padding-left: 15px; }
-        
-        .sub-tabs { display: flex; gap: 10px; margin-bottom: 25px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
-        .sub-tab { text-decoration: none; padding: 8px 20px; border-radius: 5px; transition: all 0.3s; }
-        .sub-tab:hover { opacity: 0.8; }
         
         .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         .data-table th { background-color: #8B4513; color: white; padding: 12px; text-align: left; font-size: 13px; font-weight: 600; }
@@ -148,10 +134,9 @@ if($usersResult) {
         .form-group { flex: 1; min-width: 180px; }
         .form-group label { display: block; font-size: 12px; font-weight: 600; color: #8B4513; margin-bottom: 5px; }
         .form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
-        .form-group input:focus, .form-group select:focus { border-color: #8B4513; outline: none; }
         
-        .btn-add { background-color: #8B4513; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.3s; }
-        .btn-add:hover { background-color: #6d3710; }
+        .btn-add { background-color: #2e7d32; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .btn-add:hover { background-color: #1b5e20; }
         .btn-delete { background-color: #dc3545; color: white; border: none; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; text-decoration: none; display: inline-block; }
         .btn-delete:hover { background-color: #c82333; }
         .submit-btn { background-color: #8B4513; color: white; border: none; padding: 8px 25px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; }
@@ -193,7 +178,6 @@ if($usersResult) {
             .nav-bar { flex-direction: column; gap: 10px; }
             .stats-cards { flex-direction: column; }
             .data-table { overflow-x: auto; display: block; }
-            .sub-tabs { flex-direction: column; }
         }
     </style>
 </head>
@@ -207,8 +191,8 @@ if($usersResult) {
         <div class="university-name">Daeyang University</div>
         <div class="nav-links">
             <a href="?page=home" class="<?php echo ($page == 'home') ? 'active' : ''; ?>">Home</a>
-            <a href="?page=rooms&action=add" class="<?php echo ($page == 'rooms') ? 'active' : ''; ?>">Manage Rooms</a>
-            <a href="?page=users&action=list" class="<?php echo ($page == 'users') ? 'active' : ''; ?>">Manage Users</a>
+            <a href="?page=rooms" class="<?php echo ($page == 'rooms') ? 'active' : ''; ?>">Manage Rooms</a>
+            <a href="?page=users" class="<?php echo ($page == 'users') ? 'active' : ''; ?>">Manage Users</a>
             <a href="?page=reports" class="<?php echo ($page == 'reports') ? 'active' : ''; ?>">Reports</a>
             <a href="?page=profile" class="<?php echo ($page == 'profile') ? 'active' : ''; ?>">Profile</a>
             <a href="../logout.php">Logout</a>
@@ -217,7 +201,6 @@ if($usersResult) {
 
     <div class="welcome-section">
         <h1>Welcome, <?php echo $userData['name']; ?>!</h1>
-        <p>Administrator Dashboard</p>
     </div>
 
     <div class="content-area">
@@ -249,13 +232,6 @@ if($usersResult) {
         <?php if($page == 'rooms'): ?>
             <div class="content-card">
                 <h2>Manage Rooms</h2>
-                
-                <!-- Sub navigation tabs for Rooms -->
-                <div class="sub-tabs">
-                    <a href="?page=rooms&action=add" class="sub-tab" style="background: <?php echo (!isset($_GET['action']) || $_GET['action'] == 'add') ? '#8B4513' : '#f0f0f0'; ?>; color: <?php echo (!isset($_GET['action']) || $_GET['action'] == 'add') ? 'white' : '#333'; ?>;">Add New Room</a>
-                    <a href="?page=rooms&action=list" class="sub-tab" style="background: <?php echo (isset($_GET['action']) && $_GET['action'] == 'list') ? '#8B4513' : '#f0f0f0'; ?>; color: <?php echo (isset($_GET['action']) && $_GET['action'] == 'list') ? 'white' : '#333'; ?>;">All Rooms</a>
-                </div>
-                
                 <?php if($added): ?>
                     <div class="success-message">Room added successfully!</div>
                 <?php endif; ?>
@@ -263,91 +239,87 @@ if($usersResult) {
                     <div class="success-message">Room deleted successfully!</div>
                 <?php endif; ?>
                 
-                <!-- ADD NEW ROOM FORM -->
-                <?php if(!isset($_GET['action']) || $_GET['action'] == 'add'): ?>
-                    <form method="POST">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Room Number</label>
-                                <input type="text" name="roomNumber" required placeholder="e.g., 101 or Botswana-01">
-                            </div>
-                            <div class="form-group">
-                                <label>Hostel Name</label>
-                                <select name="hostelName" required>
-                                    <option value="Eswanthini">Eswanthini</option>
-                                    <option value="Seychells">Seychells</option>
-                                    <option value="Namibia">Namibia</option>
-                                    <option value="Botswana">Botswana</option>
-                                    <option value="Lesotho">Lesotho</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Gender</label>
-                                <select name="gender" required>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Capacity</label>
-                                <input type="number" name="capacity" required placeholder="Number of beds">
-                            </div>
+                <h3 style="margin:0 0 15px 0; color:#8B4513; font-size:16px;">Add New Room</h3>
+                <form method="POST">
+                    <div class="form-row">
+                        <div class="form-group"><label>Room Number</label><input type="text" name="roomNumber" required></div>
+                        <div class="form-group">
+                            <label>Hostel Name</label>
+                            <select name="hostelName" required>
+                                <option value="Eswanthini">Eswanthini</option>
+                                <option value="Seychells">Seychells</option>
+                                <option value="Namibia">Namibia</option>
+                                <option value="Botswana">Botswana</option>
+                                <option value="Lesotho">Lesotho</option>
+                            </select>
                         </div>
-                        <button type="submit" name="add_room" class="btn-add">Add Room</button>
-                    </form>
-                <?php endif; ?>
+                        <div class="form-group">
+                            <label>Gender</label>
+                            <select name="gender" required>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>Capacity</label><input type="number" name="capacity" required></div>
+                    </div>
+                    <button type="submit" name="add_room" class="btn-add">Add Room</button>
+                </form>
                 
-                <!-- ALL ROOMS LIST -->
-                <?php if(isset($_GET['action']) && $_GET['action'] == 'list'): ?>
-                    <?php if(count($allRooms) > 0): ?>
-                        <div style="overflow-x: auto;">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Room Number</th>
-                                        <th>Hostel Name</th>
-                                        <th>Gender</th>
-                                        <th>Capacity</th>
-                                        <th>Available Beds</th>
-                                        <th>Status</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach($allRooms as $room): ?>
+                <h3 style="margin:30px 0 15px 0; color:#8B4513; font-size:16px;">All Rooms</h3>
+                <?php if(count($allRooms) > 0): ?>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Room Number</th>
+                                    <th>Hostel Name</th>
+                                    <th>Gender</th>
+                                    <th>Capacity</th>
+                                    <th>Available Beds</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($allRooms as $room): ?>
                                     <tr>
                                         <td><?php echo htmlspecialchars($room['roomNumber']); ?></td>
                                         <td><?php echo htmlspecialchars($room['hostelName']); ?></td>
                                         <td><?php echo htmlspecialchars($room['gender']); ?></td>
                                         <td><?php echo $room['capacity']; ?></td>
                                         <td><?php echo $room['availableBeds']; ?></td>
+                                        <td><?php echo ($room['availableBeds'] > 0) ? '<span class="badge badge-available">Available</span>' : '<span class="badge badge-full">Full</span>'; ?></td>
                                         <td>
-                                            <?php if($room['availableBeds'] > 0): ?>
-                                                <span class="badge badge-available">Available</span>
+                                            <?php if(!empty($room['roomID'])): ?>
+                                                <a href="?page=rooms&delete=<?php echo $room['roomID']; ?>" class="btn-delete" onclick="return confirm('Delete this room?')">Delete</a>
                                             <?php else: ?>
-                                                <span class="badge badge-full">Full</span>
+                                                <span class="text-muted">No action</span>
                                             <?php endif; ?>
                                         </td>
-                                        <td>
-                                            <a href="?page=rooms&action=list&delete=<?php echo $room['roomID']; ?>" class="btn-delete" onclick="return confirm('Delete this room?')">Delete</a>
-                                        </td>
                                     </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p>No rooms found. Click "Add New Room" to add your first room.</p>
-                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <p>No rooms found.</p>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
 
         <!-- MANAGE USERS PAGE -->
         <?php if($page == 'users'): ?>
+            <?php
+            $usersResult = $db->query("SELECT userID, username, name, email, phone, role FROM users ORDER BY role, name");
+            $users = [];
+            if($usersResult) {
+                while($row = $usersResult->fetch_assoc()) {
+                    $users[] = $row;
+                }
+            }
+            ?>
             <div class="content-card">
                 <h2>Manage Users</h2>
-                
                 <?php if($userDeleted): ?>
                     <div class="success-message">User deleted successfully!</div>
                 <?php endif; ?>
@@ -355,7 +327,7 @@ if($usersResult) {
                     <div class="error-message">You cannot delete your own account.</div>
                 <?php endif; ?>
                 
-                <?php if(count($allUsers) > 0): ?>
+                <?php if(count($users) > 0): ?>
                     <div style="overflow-x: auto;">
                         <table class="data-table">
                             <thead>
@@ -369,21 +341,21 @@ if($usersResult) {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach($allUsers as $user): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($user['username']); ?></td>
-                                    <td><?php echo htmlspecialchars($user['name']); ?></td>
-                                    <td><?php echo $user['email'] ?: 'N/A'; ?></td>
-                                    <td><?php echo $user['phone'] ?: 'N/A'; ?></td>
-                                    <td><?php echo ucfirst($user['role']); ?></td>
-                                    <td>
-                                        <?php if($user['userID'] != $_SESSION['user_id']): ?>
-                                            <a href="?page=users&action=list&delete=<?php echo $user['userID']; ?>" class="btn-delete" onclick="return confirm('Delete this user?')">Delete</a>
-                                        <?php else: ?>
-                                            <span style="color:#999;">Current</span>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
+                                <?php foreach($users as $user): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($user['username']); ?></td>
+                                        <td><?php echo htmlspecialchars($user['name']); ?></td>
+                                        <td><?php echo $user['email'] ?: 'N/A'; ?></td>
+                                        <td><?php echo $user['phone'] ?: 'N/A'; ?></td>
+                                        <td><?php echo ucfirst($user['role']); ?></td>
+                                        <td>
+                                            <?php if($user['userID'] != $_SESSION['user_id']): ?>
+                                                <a href="?page=users&delete=<?php echo $user['userID']; ?>" class="btn-delete" onclick="return confirm('Delete this user?')">Delete</a>
+                                            <?php else: ?>
+                                                <span style="color:#999;">Current</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
@@ -398,135 +370,114 @@ if($usersResult) {
         <?php if($page == 'reports'): ?>
             <div class="content-card">
                 <h2>Reports</h2>
+                
                 <div class="report-tabs">
                     <button class="report-tab <?php echo ($selectedReport == 'students') ? 'active' : ''; ?>" onclick="window.location.href='?page=reports&report=students'">All Students</button>
                     <button class="report-tab <?php echo ($selectedReport == 'rooms') ? 'active' : ''; ?>" onclick="window.location.href='?page=reports&report=rooms'">Room Occupancy</button>
                     <button class="report-tab <?php echo ($selectedReport == 'pending') ? 'active' : ''; ?>" onclick="window.location.href='?page=reports&report=pending'">Pending Approvals</button>
                 </div>
                 
+                <div style="margin-bottom: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <a href="preview_report.php?type=<?php echo $selectedReport; ?>" target="_blank" style="background-color: #17a2b8; color: white; padding: 6px 15px; text-decoration: none; border-radius: 5px; font-size: 13px;">Preview Report</a>
+                </div>
+                
                 <?php if($selectedReport == 'students'): ?>
                     <h3 style="margin-bottom:15px; color:#8B4513;">All Students</h3>
-                    <?php if(count($allStudents) > 0): ?>
-                        <div style="overflow-x: auto;">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Reg Number</th>
-                                        <th>Program</th>
-                                        <th>Year</th>
-                                        <th>Gender</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach($allStudents as $student): ?>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Reg Number</th>
+                                    <th>Program</th>
+                                    <th>Year</th>
+                                    <th>Gender</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($allStudents as $student): ?>
                                     <tr>
                                         <td><?php echo htmlspecialchars($student['name']); ?></td>
                                         <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
                                         <td><?php echo $student['program'] ?: 'N/A'; ?></td>
-                                        <td>
-                                            <?php 
+                                        <td><?php 
                                             $y = $student['year'];
                                             if($y == 1) echo '1st Year';
                                             elseif($y == 2) echo '2nd Year';
                                             elseif($y == 3) echo '3rd Year';
                                             elseif($y == 4) echo '4th Year';
                                             else echo 'N/A';
-                                            ?>
-                                        </td>
+                                        ?></td>
                                         <td><?php echo $student['gender'] ?: 'N/A'; ?></td>
-                                        <td>
-                                            <?php 
-                                            $s = $student['applicationStatus'];
-                                            if($s == 'pending') echo '<span class="badge badge-pending">Pending</span>';
-                                            elseif($s == 'approved') echo '<span class="badge badge-approved">Approved</span>';
-                                            elseif($s == 'allocated') echo '<span class="badge badge-allocated">Allocated</span>';
-                                            else echo ucfirst($s);
-                                            ?>
-                                        </td>
+                                        <td><?php echo ucfirst($student['applicationStatus']); ?></td>
                                     </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p>No students found.</p>
-                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php endif; ?>
                 
                 <?php if($selectedReport == 'rooms'): ?>
                     <h3 style="margin-bottom:15px; color:#8B4513;">Room Occupancy</h3>
-                    <?php if(count($allRooms) > 0): ?>
-                        <div style="overflow-x: auto;">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Room Number</th>
-                                        <th>Hostel Name</th>
-                                        <th>Gender</th>
-                                        <th>Capacity</th>
-                                        <th>Available Beds</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach($allRooms as $room): ?>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Room Number</th>
+                                    <th>Hostel Name</th>
+                                    <th>Gender</th>
+                                    <th>Capacity</th>
+                                    <th>Occupied</th>
+                                    <th>Available</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($allRooms as $room): ?>
                                     <tr>
                                         <td><?php echo htmlspecialchars($room['roomNumber']); ?></td>
                                         <td><?php echo htmlspecialchars($room['hostelName']); ?></td>
-                                        <td><?php echo htmlspecialchars($room['gender']); ?></td>
+                                        <td><?php echo $room['gender']; ?></td>
                                         <td><?php echo $room['capacity']; ?></td>
+                                        <td><?php echo $room['occupiedBeds']; ?></td>
                                         <td><?php echo $room['availableBeds']; ?></td>
-                                        <td>
-                                            <?php if($room['availableBeds'] > 0): ?>
-                                                <span class="badge badge-available">Available</span>
-                                            <?php else: ?>
-                                                <span class="badge badge-full">Full</span>
-                                            <?php endif; ?>
-                                        </td>
+                                        <td><?php echo ucfirst($room['status']); ?></td>
                                     </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p>No rooms found.</p>
-                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php endif; ?>
                 
                 <?php if($selectedReport == 'pending'): ?>
                     <h3 style="margin-bottom:15px; color:#8B4513;">Pending Approvals</h3>
-                    <?php if(count($pendingStudents) > 0): ?>
-                        <div style="overflow-x: auto;">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Reg Number</th>
-                                        <th>Program</th>
-                                        <th>Year</th>
-                                        <th>Gender</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach($pendingStudents as $student): ?>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Reg Number</th>
+                                    <th>Program</th>
+                                    <th>Year</th>
+                                    <th>Gender</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($pendingStudents as $student): ?>
                                     <tr>
                                         <td><?php echo htmlspecialchars($student['name']); ?></td>
                                         <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
                                         <td><?php echo $student['program']; ?></td>
-                                        <td><?php echo $student['year']; ?> Year</td>
-                                        <td><?php echo $student['gender']; ?></td>
-                                        <td><span class="badge badge-pending">Pending Accountant</span></td>
+                                        <td><?php echo $student['year']; ?> Year</td
+                                        <td><?php echo $student['gender']; ?></td
+                                        <td><span class="badge badge-pending">Pending Accountant</span></td
                                     </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p style="text-align:center; padding:30px;">No pending approvals. All students have been processed.</p>
-                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -535,34 +486,15 @@ if($usersResult) {
         <?php if($page == 'profile'): ?>
             <div class="content-card">
                 <h2>My Profile</h2>
-                <div class="profile-field">
-                    <label>Full Name</label>
-                    <p><?php echo htmlspecialchars($userData['name']); ?></p>
-                </div>
-                <div class="profile-field">
-                    <label>Email Address</label>
-                    <p><?php echo $userData['email'] ?: 'Not set'; ?></p>
-                </div>
-                <div class="profile-field">
-                    <label>Phone Number</label>
-                    <p><?php echo $userData['phone'] ?: 'Not set'; ?></p>
-                </div>
-                <div class="profile-field">
-                    <label>Role</label>
-                    <p>Administrator</p>
-                </div>
-                
+                <div class="profile-field"><label>Full Name</label><p><?php echo htmlspecialchars($userData['name']); ?></p></div>
+                <div class="profile-field"><label>Email Address</label><p><?php echo $userData['email'] ?: 'Not set'; ?></p></div>
+                <div class="profile-field"><label>Phone Number</label><p><?php echo $userData['phone'] ?: 'Not set'; ?></p></div>
+                <div class="profile-field"><label>Role</label><p>Administrator</p></div>
                 <h3 style="margin:25px 0 15px 0; color:#8B4513;">Update Contact Information</h3>
                 <form method="POST">
                     <div class="form-row">
-                        <div class="form-group">
-                            <label>Phone Number</label>
-                            <input type="tel" name="phone" value="<?php echo $userData['phone']; ?>">
-                        </div>
-                        <div class="form-group">
-                            <label>Email Address</label>
-                            <input type="email" name="email" value="<?php echo $userData['email']; ?>">
-                        </div>
+                        <div class="form-group"><label>Phone Number</label><input type="tel" name="phone" value="<?php echo $userData['phone']; ?>"></div>
+                        <div class="form-group"><label>Email Address</label><input type="email" name="email" value="<?php echo $userData['email']; ?>"></div>
                     </div>
                     <button type="submit" name="update_profile" class="submit-btn">Update Profile</button>
                 </form>
@@ -572,25 +504,11 @@ if($usersResult) {
 
     <div class="footer">
         <div class="footer-content">
-            <div class="footer-section">
-                <h3>About Us</h3>
-                <p>Daeyang University is a Christian University founded by the Miracle for Africa Foundation.</p>
-            </div>
-            <div class="footer-section">
-                <h3>Quick Links</h3>
-                <p><a href="#">Home</a></p>
-                <p><a href="#">About Us</a></p>
-                <p><a href="#">Contact Us</a></p>
-            </div>
-            <div class="footer-section">
-                <h3>Contact Us</h3>
-                <p>+265994000389</p>
-                <p>registrar@dyuni.ac.mw</p>
-            </div>
+            <div class="footer-section"><h3>About Us</h3><p>Daeyang University is a Christian University founded by the Miracle for Africa Foundation.</p></div>
+            <div class="footer-section"><h3>Quick Links</h3><p><a href="#">Home</a></p><p><a href="#">About Us</a></p><p><a href="#">Contact Us</a></p></div>
+            <div class="footer-section"><h3>Contact Us</h3><p>+265994000389</p><p>registrar@dyuni.ac.mw</p></div>
         </div>
-        <div class="copyright">
-            &copy; <?php echo date('Y'); ?> Daeyang University. All rights reserved.
-        </div>
+        <div class="copyright">&copy; <?php echo date('Y'); ?> Daeyang University. All rights reserved.</div>
     </div>
 </body>
 </html>

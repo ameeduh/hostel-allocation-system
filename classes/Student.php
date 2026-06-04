@@ -17,12 +17,13 @@ class Student extends User {
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
                 WHERE s.regNumber = '$username'";
+        
         $result = $this->db->query($sql);
         
-        if ($result && $result->num_rows == 1) {
+        if ($result && $result->num_rows === 1) {
             $user = $result->fetch_assoc();
-            // Plain text password check (for 2003 and testing)
-            if ($password == $user['password']) {
+            
+            if (password_verify($password, $user['password'])) {
                 $this->userID = $user['userID'];
                 $this->username = $user['regNumber'];
                 $this->name = $user['name'];
@@ -35,7 +36,7 @@ class Student extends User {
                 $this->year = $user['year'];
                 $this->applicationStatus = $user['applicationStatus'];
                 $this->gender = $user['gender'];
-                $this->roomID = $user['roomID'];
+                $this->roomID = $user['allocatedRoomID'];
                 
                 $_SESSION['user_id'] = $this->userID;
                 $_SESSION['username'] = $this->username;
@@ -53,7 +54,6 @@ class Student extends User {
         $regNumber = $this->db->escape($regNumber);
         $name = $this->db->escape($name);
         
-        // Check if student already exists
         $checkSql = "SELECT * FROM students WHERE regNumber = '$regNumber'";
         $checkResult = $this->db->query($checkSql);
         
@@ -61,9 +61,10 @@ class Student extends User {
             return false;
         }
         
-        // Insert into users table with plain text password
+        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+        
         $sql1 = "INSERT INTO users (username, password, name, email, phone, role) 
-                 VALUES ('$regNumber', '$password', '$name', '', '', 'student')";
+                 VALUES ('$regNumber', '$hashedPassword', '$name', '', '', 'student')";
         
         if ($this->db->query($sql1)) {
             $userID = $this->db->getInsertId();
@@ -74,6 +75,34 @@ class Student extends User {
             return $this->db->query($sql2);
         }
         return false;
+    }
+    
+    public function saveStudentDetails($data) {
+        $program = $this->db->escape($data['program']);
+        $year = (int)$data['year'];
+        $gender = $this->db->escape($data['gender']);
+        $address = $this->db->escape($data['address']);
+        $medical_condition = $this->db->escape($data['medical_condition']);
+        $medical_condition_details = $this->db->escape($data['medical_condition_details']);
+        $guardian_name = $this->db->escape($data['guardian_name']);
+        $guardian_relationship = $this->db->escape($data['guardian_relationship']);
+        $guardian_phone = $this->db->escape($data['guardian_phone']);
+        
+        $sql = "UPDATE students SET 
+                    program = '$program',
+                    year = $year,
+                    gender = '$gender',
+                    address = '$address',
+                    medical_condition = '$medical_condition',
+                    medical_condition_details = '$medical_condition_details',
+                    guardian_name = '$guardian_name',
+                    guardian_relationship = '$guardian_relationship',
+                    guardian_phone = '$guardian_phone',
+                    agreement_confirmed = 1,
+                    applicationStatus = 'pending'
+                WHERE studentID = {$this->studentID}";
+        
+        return $this->db->query($sql);
     }
     
     public function viewStatus() {

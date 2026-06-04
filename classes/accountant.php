@@ -8,15 +8,17 @@ class Accountant extends User {
     public function login($username, $password) {
         $username = $this->db->escape($username);
         
-        $sql = "SELECT a.*, u.name, u.email, u.phone 
+        $sql = "SELECT a.*, u.name, u.email, u.phone, u.password 
                 FROM accountants a 
                 JOIN users u ON a.userID = u.userID 
-                WHERE u.username = '$username'";
+                WHERE u.username = '$username' AND u.role = 'accounts'";
+        
         $result = $this->db->query($sql);
         
-        if ($result && $result->num_rows == 1) {
+        if ($result && $result->num_rows === 1) {
             $user = $result->fetch_assoc();
-            if ($password == 'password123') {
+            
+            if (password_verify($password, $user['password'])) {
                 $this->userID = $user['userID'];
                 $this->username = $user['username'];
                 $this->name = $user['name'];
@@ -41,22 +43,26 @@ class Accountant extends User {
         $sql = "SELECT s.*, u.name 
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
-                WHERE s.applicationStatus = 'pending'";
+                WHERE s.applicationStatus = 'pending'
+                ORDER BY s.studentID";
+        
         $result = $this->db->query($sql);
-        if ($result && $result->num_rows > 0) {
-            return $result->fetch_all(MYSQLI_ASSOC);
+        $students = array();
+        if($result) {
+            while($row = $result->fetch_assoc()) {
+                $students[] = $row;
+            }
         }
-        return [];
+        return $students;
     }
     
     public function verifyFees($studentID) {
-        // Check if student has fee commitment
         $checkSql = "SELECT fee_commitment, fee_commitment_status FROM students WHERE studentID = $studentID";
         $checkResult = $this->db->query($checkSql);
         $student = $checkResult->fetch_assoc();
         
-        // If has pending fee commitment, approve and mark commitment as approved
-        if($student['fee_commitment'] && ($student['fee_commitment_status'] == 'pending' || $student['fee_commitment_status'] == NULL)) {
+        if($student && $student['fee_commitment'] && 
+           ($student['fee_commitment_status'] == 'pending' || $student['fee_commitment_status'] == NULL)) {
             $sql = "UPDATE students SET 
                         applicationStatus = 'approved',
                         fee_commitment_status = 'approved'
@@ -64,6 +70,7 @@ class Accountant extends User {
         } else {
             $sql = "UPDATE students SET applicationStatus = 'approved' WHERE studentID = $studentID";
         }
+        
         return $this->db->query($sql);
     }
     
@@ -77,11 +84,15 @@ class Accountant extends User {
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
                 WHERE s.applicationStatus = 'approved'";
+        
         $result = $this->db->query($sql);
-        if ($result && $result->num_rows > 0) {
-            return $result->fetch_all(MYSQLI_ASSOC);
+        $students = array();
+        if($result) {
+            while($row = $result->fetch_assoc()) {
+                $students[] = $row;
+            }
         }
-        return [];
+        return $students;
     }
     
     public function getAccountantID() { return $this->accountantID; }

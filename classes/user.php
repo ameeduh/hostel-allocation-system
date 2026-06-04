@@ -9,6 +9,7 @@ class User {
     protected $email;
     protected $phone;
     protected $role;
+    protected $isLoggedIn = false;
     
     public function __construct() {
         $this->db = new Database();
@@ -16,6 +17,7 @@ class User {
     
     public function logout() {
         session_destroy();
+        $this->isLoggedIn = false;
         return true;
     }
     
@@ -25,5 +27,6 @@ class User {
     public function getEmail() { return $this->email; }
     public function getPhone() { return $this->phone; }
     public function getRole() { return $this->role; }
+    public function isLoggedIn() { return $this->isLoggedIn; }
 }
 ?>

@@ -3,10 +3,10 @@
 session_start();
 if(isset($_SESSION['user_id'])) {
     if($_SESSION['role'] == 'student') {
-        header("Location: students/dashboard.php");
+        header("Location: student/dashboard.php");
         exit();
     } elseif($_SESSION['role'] == 'accounts') {
-        header("Location: accounts/dashboard.php");
+        header("Location: accountant/dashboard.php");
         exit();
     } elseif($_SESSION['role'] == 'registrar') {
         header("Location: registrar/dashboard.php");
