@@ -99,11 +99,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
 // Function to build department filter WHERE clause
 function getDepartmentFilter($departmentFilter) {
     if($departmentFilter == 'ict') {
-        return " AND regNumber LIKE '%BscICT%'";
+        return " AND s.regNumber LIKE '%BscICT%'";
     } elseif($departmentFilter == 'nursing') {
-        return " AND regNumber LIKE '%BscNM%'";
+        return " AND s.regNumber LIKE '%BscNM%'";
     } elseif($departmentFilter == 'business') {
-        return " AND regNumber LIKE '%BscBA%'";
+        return " AND s.regNumber LIKE '%BscBA%'";
     }
     return "";
 }
@@ -234,6 +234,7 @@ if($blacklistResult) {
         <a href="blacklist.php">Blacklist</a>
         <a href="fee_requests.php">Fee Requests</a>
         <a href="?page=approved" class="<?php echo ($page=='approved')?'active':''; ?>">Approved Students</a>
+        <a href="reports.php">Reports</a>
         <a href="?page=profile" class="<?php echo ($page=='profile')?'active':''; ?>">Profile</a>
         <a href="../logout.php">Logout</a>
     </div>
@@ -252,11 +253,10 @@ if($blacklistResult) {
             <h2>Dashboard Overview</h2>
             <div class="stats-cards">
                 <div class="stat-card"><div class="stat-number"><?php echo $totalStudents; ?></div><div class="stat-label">Total Students</div></div>
-                <div class="stat-card"><div class="stat-number"><?php echo $blacklistCount; ?></div><div class="stat-label">Blacklisted Students</div></div>
                 <div class="stat-card"><div class="stat-number"><?php echo $feeCommitmentCount; ?></div><div class="stat-label">Fee Commitment</div></div>
                 <div class="stat-card"><div class="stat-number"><?php echo $approvedCount; ?></div><div class="stat-label">Approved Students</div></div>
             </div>
-            <p style="margin-top:15px; color:#666;">Use the menu above to manage blacklist and fee commitment requests.</p>
+            <p style="margin-top:15px; color:#666;">Use the menu above to manage blacklist, fee commitment requests, and view reports.</p>
         </div>
         
     <!-- APPROVED STUDENTS PAGE -->

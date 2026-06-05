@@ -13,6 +13,14 @@ $result = $db->query($sql);
 $userData = $result->fetch_assoc();
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'home';
+$reportHostel = isset($_GET['report_hostel']) ? $_GET['report_hostel'] : '';
+$reportRoom = isset($_GET['report_room']) ? $_GET['report_room'] : '';
+$from_date = isset($_GET['from_date']) ? $_GET['from_date'] : '';
+$to_date = isset($_GET['to_date']) ? $_GET['to_date'] : '';
+
+// Get filters for allocated students
+$allocatedHostel = isset($_GET['allocated_hostel']) ? $_GET['allocated_hostel'] : '';
+$allocatedRoom = isset($_GET['allocated_room']) ? $_GET['allocated_room'] : '';
 
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     $phone = $_POST['phone'];
@@ -22,8 +30,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     header("Location: dashboard.php?page=profile&updated=1");
     exit();
 }
-
-$profileUpdated = isset($_GET['updated']);
 
 // Handle password change
 $password_message = '';
@@ -81,6 +87,8 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
     }
 }
 
+$profileUpdated = isset($_GET['updated']);
+
 // Get stats for dashboard
 $totalAllocated = 0;
 $allocatedResult = $db->query("SELECT COUNT(*) as total FROM students WHERE applicationStatus = 'allocated' AND allocationStatus = 'active'");
@@ -109,6 +117,88 @@ if($studentsResult) {
     $row = $studentsResult->fetch_assoc();
     $totalStudents = $row['total'];
 }
+
+// Get list of hostels for dropdown
+$hostels = ['Eswanthini', 'Seychells', 'Namibia', 'Botswana', 'Lesotho'];
+
+// Get rooms for allocated students filter
+$roomsList = array();
+if($allocatedHostel) {
+    $roomSql = "SELECT DISTINCT roomNumber, roomID FROM rooms WHERE hostelName = '$allocatedHostel' ORDER BY roomNumber";
+    $roomResult = $db->query($roomSql);
+    if($roomResult) {
+        while($row = $roomResult->fetch_assoc()) {
+            $roomsList[] = $row;
+        }
+    }
+}
+
+// Get rooms for reports filter
+$reportRoomsList = array();
+if($reportHostel) {
+    $roomSql = "SELECT DISTINCT roomNumber, roomID FROM rooms WHERE hostelName = '$reportHostel' ORDER BY roomNumber";
+    $roomResult = $db->query($roomSql);
+    if($roomResult) {
+        while($row = $roomResult->fetch_assoc()) {
+            $reportRoomsList[] = $row;
+        }
+    }
+}
+
+// Build WHERE clause for allocated students
+$allocatedWhere = " WHERE s.applicationStatus = 'allocated' AND s.allocationStatus = 'active'";
+if($allocatedHostel) {
+    $allocatedWhere .= " AND r.hostelName = '$allocatedHostel'";
+}
+if($allocatedRoom) {
+    $allocatedWhere .= " AND r.roomNumber = '$allocatedRoom'";
+}
+
+// Get allocated students
+$allocatedSql = "SELECT s.studentID, s.regNumber, u.name as studentName, s.allocatedRoomID, s.allocatedDate, s.gender, s.program, s.year, r.roomNumber, r.hostelName 
+                FROM students s 
+                JOIN users u ON s.userID = u.userID 
+                LEFT JOIN rooms r ON s.allocatedRoomID = r.roomID 
+                $allocatedWhere
+                ORDER BY s.allocatedDate DESC";
+$allocatedResult = $db->query($allocatedSql);
+$allocatedStudents = array();
+if($allocatedResult) {
+    while($row = $allocatedResult->fetch_assoc()) {
+        $allocatedStudents[] = $row;
+    }
+}
+
+// Build WHERE clause for reports
+$reportWhere = " WHERE s.applicationStatus = 'allocated' AND s.allocationStatus = 'active'";
+if($reportHostel) {
+    $reportWhere .= " AND r.hostelName = '$reportHostel'";
+}
+if($reportRoom) {
+    $reportWhere .= " AND r.roomNumber = '$reportRoom'";
+}
+if($from_date && $to_date) {
+    $reportWhere .= " AND s.allocatedDate BETWEEN '$from_date' AND '$to_date'";
+} elseif($from_date) {
+    $reportWhere .= " AND s.allocatedDate >= '$from_date'";
+} elseif($to_date) {
+    $reportWhere .= " AND s.allocatedDate <= '$to_date'";
+}
+
+// Get report data
+$reportSql = "SELECT s.studentID, s.regNumber, u.name as studentName, s.allocatedRoomID, s.allocatedDate, s.gender, s.program, s.year, r.roomNumber, r.hostelName 
+              FROM students s 
+              JOIN users u ON s.userID = u.userID 
+              LEFT JOIN rooms r ON s.allocatedRoomID = r.roomID 
+              $reportWhere
+              ORDER BY s.allocatedDate DESC";
+$reportResult = $db->query($reportSql);
+$reportStudents = array();
+if($reportResult) {
+    while($row = $reportResult->fetch_assoc()) {
+        $reportStudents[] = $row;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -135,6 +225,23 @@ if($studentsResult) {
         .content-card{background:white;border-radius:8px;padding:20px;border:1px solid #e0e0e0;}
         .content-card h2{color:#8B4513;font-size:18px;margin-bottom:15px;border-bottom:2px solid #FFD700;display:inline-block;padding-bottom:5px;}
         
+        .sub-tabs{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid #ddd;padding-bottom:10px;}
+        .sub-tab{padding:8px 20px;text-decoration:none;border-radius:5px;background:#f0f0f0;color:#333;}
+        .sub-tab.active{background:#8B4513;color:white;}
+        .sub-tab:hover{background:#8B4513;color:white;}
+        
+        .filter-bar{display:flex;gap:15px;margin-bottom:20px;flex-wrap:wrap;align-items:center;padding:10px 0;border-bottom:1px solid #eee;}
+        .filter-group{display:flex;align-items:center;gap:8px;}
+        .filter-group label{font-weight:600;color:#8B4513;font-size:13px;}
+        .filter-group select,.filter-group input{padding:6px 12px;border:1px solid #ddd;border-radius:4px;font-size:13px;background:white;}
+        .filter-group select:focus,.filter-group input:focus{border-color:#8B4513;outline:none;}
+        .btn-filter{background-color:#8B4513;color:white;border:none;padding:6px 15px;border-radius:4px;cursor:pointer;}
+        .btn-filter:hover{background-color:#6d3710;}
+        
+        .export-buttons{display:flex;gap:10px;justify-content:flex-end;margin-bottom:20px;}
+        .btn-export{background-color:#8B4513;color:white;border:none;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block;}
+        .btn-export:hover{background-color:#6d3710;}
+        
         .stats-cards{display:flex;gap:20px;margin-bottom:25px;flex-wrap:wrap;}
         .stat-card{flex:1;min-width:150px;background:#f8f9fa;border-radius:5px;padding:15px;text-align:center;border:1px solid #e0e0e0;}
         .stat-number{font-size:28px;font-weight:bold;color:#8B4513;}
@@ -145,10 +252,7 @@ if($studentsResult) {
         .data-table td{padding:10px;border-bottom:1px solid #eee;font-size:13px;}
         .data-table tr:hover{background-color:#f9f9f9;}
         
-        .btn-allocate{background-color:#dc3545;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;}
-        .btn-allocate:hover{background-color:#c82333;}
-        .btn-clearance{background-color:#28a745;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;}
-        .btn-clearance:hover{background-color:#218838;}
+        .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;}
         
         .profile-field{padding:10px;border-bottom:1px solid #eee;}
         .profile-field label{font-size:12px;color:#666;display:block;margin-bottom:3px;}
@@ -158,10 +262,6 @@ if($studentsResult) {
         .form-group label{display:block;font-size:12px;font-weight:600;color:#8B4513;margin-bottom:4px;}
         .form-group input{width:100%;padding:8px;border:1px solid #ddd;border-radius:5px;font-size:13px;}
         .submit-btn{background-color:#8B4513;color:white;padding:8px 20px;border:none;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px;}
-        
-        .gender-tabs{display:flex;gap:10px;margin-bottom:20px;}
-        .gender-tab{padding:8px 20px;background:#f0f0f0;color:#333;text-decoration:none;border-radius:5px;}
-        .gender-tab.active{background:#8B4513;color:white;}
         
         .success-message{background-color:#d4edda;color:#155724;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
         .error-message{background-color:#f8d7da;color:#721c24;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
@@ -178,9 +278,53 @@ if($studentsResult) {
             .nav-bar{flex-direction:column;gap:10px;}
             .stats-cards{flex-direction:column;}
             .data-table{overflow-x:auto;display:block;}
-            .gender-tabs{flex-direction:column;}
+            .filter-bar{flex-direction:column;align-items:flex-start;}
+            .sub-tabs{flex-direction:column;}
         }
     </style>
+    <script>
+        function updateRooms() {
+            var hostel = document.getElementById('allocatedHostel').value;
+            if(hostel) {
+                window.location.href = 'dashboard.php?page=allocated&allocated_hostel=' + hostel;
+            } else {
+                window.location.href = 'dashboard.php?page=allocated';
+            }
+        }
+        
+        function updateReportRooms() {
+            var hostel = document.getElementById('reportHostel').value;
+            var fromDate = document.getElementById('fromDate').value;
+            var toDate = document.getElementById('toDate').value;
+            if(hostel) {
+                window.location.href = 'dashboard.php?page=reports&report_hostel=' + hostel + '&from_date=' + fromDate + '&to_date=' + toDate;
+            } else {
+                window.location.href = 'dashboard.php?page=reports&from_date=' + fromDate + '&to_date=' + toDate;
+            }
+        }
+        
+        function applyReportFilter() {
+            var hostel = document.getElementById('reportHostel').value;
+            var room = document.getElementById('reportRoom').value;
+            var fromDate = document.getElementById('fromDate').value;
+            var toDate = document.getElementById('toDate').value;
+            window.location.href = 'dashboard.php?page=reports&report_hostel=' + hostel + '&report_room=' + room + '&from_date=' + fromDate + '&to_date=' + toDate;
+        }
+        
+        function applyAllocatedFilter() {
+            var hostel = document.getElementById('allocatedHostel').value;
+            var room = document.getElementById('allocatedRoom').value;
+            window.location.href = 'dashboard.php?page=allocated&allocated_hostel=' + hostel + '&allocated_room=' + room;
+        }
+        
+        function clearAllocatedFilter() {
+            window.location.href = 'dashboard.php?page=allocated';
+        }
+        
+        function clearReportFilter() {
+            window.location.href = 'dashboard.php?page=reports';
+        }
+    </script>
 </head>
 <body>
 <div class="top-bar">
@@ -192,6 +336,7 @@ if($studentsResult) {
     <div class="nav-links">
         <a href="?page=home" class="<?php echo ($page=='home')?'active':''; ?>">Home</a>
         <a href="?page=allocated" class="<?php echo ($page=='allocated')?'active':''; ?>">Allocated Students</a>
+        <a href="?page=reports" class="<?php echo ($page=='reports')?'active':''; ?>">Reports</a>
         <a href="?page=clearance" class="<?php echo ($page=='clearance')?'active':''; ?>">Clearance Requests</a>
         <a href="?page=profile" class="<?php echo ($page=='profile')?'active':''; ?>">Profile</a>
         <a href="../logout.php">Logout</a>
@@ -215,43 +360,46 @@ if($studentsResult) {
                 <div class="stat-card"><div class="stat-number"><?php echo $availableRooms; ?></div><div class="stat-label">Available Rooms</div></div>
                 <div class="stat-card"><div class="stat-number"><?php echo $pendingClearance; ?></div><div class="stat-label">Pending Clearance</div></div>
             </div>
-            <p style="margin-top:15px; color:#666;">Rooms are automatically allocated by the system after fee verification. Your role is to manage allocated students and process clearance requests.</p>
+            <p style="margin-top:15px; color:#666;">Rooms are automatically allocated by the system after fee verification. Use the menu above to view allocated students and generate reports.</p>
         </div>
         
     <!-- ALLOCATED STUDENTS PAGE -->
     <?php elseif($page == 'allocated'): ?>
-        <?php
-        $selectedGender = isset($_GET['gender']) ? $_GET['gender'] : 'male';
-        $genderCondition = ($selectedGender == 'male') ? 'Male' : 'Female';
-        
-        $allocatedSql = "SELECT s.studentID, s.regNumber, u.name as studentName, s.allocatedRoomID, s.allocatedDate, s.gender, s.program, s.year, r.roomNumber, r.hostelName 
-                        FROM students s 
-                        JOIN users u ON s.userID = u.userID 
-                        LEFT JOIN rooms r ON s.allocatedRoomID = r.roomID 
-                        WHERE s.applicationStatus = 'allocated' AND s.allocationStatus = 'active' AND s.gender = '$genderCondition' 
-                        ORDER BY s.regNumber";
-        $allocatedResult = $db->query($allocatedSql);
-        $allocatedStudents = array();
-        if($allocatedResult) {
-            while($row = $allocatedResult->fetch_assoc()) {
-                $allocatedStudents[] = $row;
-            }
-        }
-        ?>
         <div class="content-card">
             <h2>Allocated Students</h2>
-            <div class="gender-tabs">
-                <a href="?page=allocated&gender=male" class="gender-tab <?php echo ($selectedGender == 'male') ? 'active' : ''; ?>">Male Students</a>
-                <a href="?page=allocated&gender=female" class="gender-tab <?php echo ($selectedGender == 'female') ? 'active' : ''; ?>">Female Students</a>
+            
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Hostel:</label>
+                    <select id="allocatedHostel" onchange="updateRooms()">
+                        <option value="">All Hostels</option>
+                        <?php foreach($hostels as $hostel): ?>
+                            <option value="<?php echo $hostel; ?>" <?php echo ($allocatedHostel == $hostel) ? 'selected' : ''; ?>><?php echo $hostel; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Room:</label>
+                    <select id="allocatedRoom" onchange="applyAllocatedFilter()">
+                        <option value="">All Rooms</option>
+                        <?php foreach($roomsList as $room): ?>
+                            <option value="<?php echo $room['roomNumber']; ?>" <?php echo ($allocatedRoom == $room['roomNumber']) ? 'selected' : ''; ?>><?php echo $room['roomNumber']; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <button class="btn-filter" onclick="clearAllocatedFilter()">Clear Filter</button>
             </div>
+            
             <?php if(count($allocatedStudents) > 0): ?>
                 <div style="overflow-x: auto;">
                     <table class="data-table">
                         <thead>
                             <tr>
                                 <th>Student Name</th>
+                                <th>Reg Number</th>
                                 <th>Program</th>
                                 <th>Year</th>
+                                <th>Gender</th>
                                 <th>Room Number</th>
                                 <th>Hostel</th>
                                 <th>Allocated Date</th>
@@ -259,20 +407,99 @@ if($studentsResult) {
                         </thead>
                         <tbody>
                             <?php foreach($allocatedStudents as $student): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($student['studentName']); ?></td>
-                                    <td><?php echo htmlspecialchars($student['program']); ?></td>
-                                    <td><?php echo $student['year']; ?> Year</td
-                                    <td><?php echo htmlspecialchars($student['roomNumber']); ?></td>
-                                    <td><?php echo htmlspecialchars($student['hostelName']); ?></td>
-                                    <td><?php echo $student['allocatedDate']; ?></td>
-                                </tr>
+                            <tr>
+                                <td><?php echo htmlspecialchars($student['studentName']); ?></td>
+                                <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($student['program']); ?></td>
+                                <td><?php echo $student['year']; ?> Year</td>
+                                <td><?php echo $student['gender']; ?></td>
+                                <td><?php echo htmlspecialchars($student['roomNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($student['hostelName']); ?></td>
+                                <td><?php echo $student['allocatedDate']; ?></td>
+                            </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
             <?php else: ?>
-                <p>No <?php echo ($selectedGender == 'male') ? 'male' : 'female'; ?> students allocated yet.</p>
+                <p>No allocated students found for the selected criteria.</p>
+            <?php endif; ?>
+        </div>
+        
+    <!-- REPORTS PAGE -->
+    <?php elseif($page == 'reports'): ?>
+        <div class="content-card">
+            <h2>Allocated Students Reports</h2>
+            
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Hostel:</label>
+                    <select id="reportHostel" onchange="updateReportRooms()">
+                        <option value="">All Hostels</option>
+                        <?php foreach($hostels as $hostel): ?>
+                            <option value="<?php echo $hostel; ?>" <?php echo ($reportHostel == $hostel) ? 'selected' : ''; ?>><?php echo $hostel; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Room:</label>
+                    <select id="reportRoom">
+                        <option value="">All Rooms</option>
+                        <?php foreach($reportRoomsList as $room): ?>
+                            <option value="<?php echo $room['roomNumber']; ?>" <?php echo ($reportRoom == $room['roomNumber']) ? 'selected' : ''; ?>><?php echo $room['roomNumber']; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>From Date:</label>
+                    <input type="date" id="fromDate" value="<?php echo $from_date; ?>">
+                </div>
+                <div class="filter-group">
+                    <label>To Date:</label>
+                    <input type="date" id="toDate" value="<?php echo $to_date; ?>">
+                </div>
+                <button class="btn-filter" onclick="applyReportFilter()">Apply Filter</button>
+                <button class="btn-filter" onclick="clearReportFilter()">Clear Filter</button>
+            </div>
+            
+            <div class="export-buttons">
+                <button onclick="window.print()" class="btn-export">Print / Save as PDF</button>
+                <a href="export_csv.php?hostel=<?php echo $reportHostel; ?>&room=<?php echo $reportRoom; ?>&from_date=<?php echo $from_date; ?>&to_date=<?php echo $to_date; ?>" class="btn-export">Export Excel</a>
+            </div>
+            
+            <?php if(count($reportStudents) > 0): ?>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="reportTable">
+                        <thead>
+                            <tr>
+                                <th>Student Name</th>
+                                <th>Reg Number</th>
+                                <th>Program</th>
+                                <th>Year</th>
+                                <th>Gender</th>
+                                <th>Room Number</th>
+                                <th>Hostel</th>
+                                <th>Allocated Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach($reportStudents as $student): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($student['studentName']); ?></td>
+                                <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($student['program']); ?></td>
+                                <td><?php echo $student['year']; ?> Year</td>
+                                <td><?php echo $student['gender']; ?></td>
+                                <td><?php echo htmlspecialchars($student['roomNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($student['hostelName']); ?></td>
+                                <td><?php echo $student['allocatedDate']; ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php else: ?>
+                <p>No allocated students found for the selected criteria.</p>
             <?php endif; ?>
         </div>
         
@@ -311,20 +538,20 @@ if($studentsResult) {
                         </thead>
                         <tbody>
                             <?php foreach($clearanceRequests as $request): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($request['studentName']); ?></td>
-                                    <td><?php echo htmlspecialchars($request['regNumber']); ?></td>
-                                    <td><?php echo htmlspecialchars($request['roomNumber']); ?></td>
-                                    <td><?php echo htmlspecialchars($request['hostelName']); ?></td>
-                                    <td><?php echo $request['requestDate']; ?></td>
-                                    <td>
-                                        <form method="POST" action="process_clearance.php" style="display:inline;">
-                                            <input type="hidden" name="clearanceID" value="<?php echo $request['clearanceID']; ?>">
-                                            <button type="submit" name="action" value="approve" class="btn-clearance" onclick="return confirm('Approve this clearance request?')">Approve</button>
-                                            <button type="submit" name="action" value="reject" class="btn-allocate" onclick="return confirm('Reject this clearance request?')">Reject</button>
-                                        </form>
-                                    </td>
-                                </tr>
+                            <tr>
+                                <td><?php echo htmlspecialchars($request['studentName']); ?></td>
+                                <td><?php echo htmlspecialchars($request['regNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($request['roomNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($request['hostelName']); ?></td>
+                                <td><?php echo $request['requestDate']; ?></td>
+                                <td>
+                                    <form method="POST" action="process_clearance.php" style="display:inline;">
+                                        <input type="hidden" name="clearanceID" value="<?php echo $request['clearanceID']; ?>">
+                                        <button type="submit" name="action" value="approve" class="btn-export" style="background-color:#28a745;" onclick="return confirm('Approve this clearance request?')">Approve</button>
+                                        <button type="submit" name="action" value="reject" class="btn-export" style="background-color:#dc3545;" onclick="return confirm('Reject this clearance request?')">Reject</button>
+                                    </form>
+                                </td>
+                            </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
