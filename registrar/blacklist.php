@@ -6,6 +6,7 @@ if(!isset($_SESSION['user_id']) || $_SESSION['role'] != 'registrar') {
 }
 
 require_once '../config/database.php';
+require_once '../config/mail_config.php';
 
 $db = new Database();
 $registrarName = $_SESSION['name'];
@@ -15,7 +16,7 @@ $messageType = '';
 $showList = isset($_GET['view']) && $_GET['view'] == 'list';
 $departmentFilter = isset($_GET['dept']) ? $_GET['dept'] : 'all';
 
-// Function to build department filter WHERE clause
+// Function to build department filter for blacklist
 function getDepartmentFilter($departmentFilter) {
     if($departmentFilter == 'ict') {
         return " AND regNumber LIKE '%BscICT%'";
@@ -35,32 +36,106 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
     $studentName = $db->escape($_POST['studentName']);
     $reason = $db->escape($_POST['reason']);
     
-    $checkSql = "SELECT * FROM blacklist WHERE regNumber = '$regNumber' AND status = 'active'";
+    // Check if student already exists in blacklist
+    $checkSql = "SELECT * FROM blacklist WHERE regNumber = '$regNumber'";
     $checkResult = $db->query($checkSql);
     
     if($checkResult && $checkResult->num_rows > 0) {
-        $message = "Student already in blacklist.";
-        $messageType = "error";
+        // UPDATE existing record
+        $updateSql = "UPDATE blacklist SET 
+                      studentName = '$studentName',
+                      reason = '$reason', 
+                      dateAdded = CURDATE(), 
+                      addedBy = '$registrarName', 
+                      status = 'active' 
+                      WHERE regNumber = '$regNumber'";
+        if($db->query($updateSql)) {
+            $message = "Student blacklist entry updated successfully.";
+            $messageType = "success";
+        } else {
+            $message = "Failed to update blacklist entry.";
+            $messageType = "error";
+        }
     } else {
+        // INSERT new record
         $insertSql = "INSERT INTO blacklist (regNumber, studentName, reason, dateAdded, addedBy, status) 
                       VALUES ('$regNumber', '$studentName', '$reason', CURDATE(), '$registrarName', 'active')";
         if($db->query($insertSql)) {
             $message = "Student added to blacklist successfully.";
             $messageType = "success";
+        } else {
+            $message = "Failed to add student to blacklist.";
+            $messageType = "error";
+        }
+    }
+    
+    // Update student application status if exists
+    $updateSql = "UPDATE students SET applicationStatus = 'rejected', registrar_status = 'rejected', registrar_reason = '$reason' WHERE regNumber = '$regNumber'";
+    $db->query($updateSql);
+    
+    // Get student email and send notification
+    $studentSql = "SELECT u.email, u.name FROM students s JOIN users u ON s.userID = u.userID WHERE s.regNumber = '$regNumber'";
+    $studentResult = $db->query($studentSql);
+    if($studentResult && $studentResult->num_rows > 0) {
+        $student = $studentResult->fetch_assoc();
+        if($student && $student['email']) {
+            $subject = "Hostel Application Status - Important Notification";
+            $body = "<html><body>
+                     <h2>Hostel Allocation System</h2>
+                     <p>Dear " . $student['name'] . ",</p>
+                     <p>Your hostel application has been <strong style='color:#c62828;'>REJECTED</strong>.</p>
+                     <p><strong>Reason:</strong> " . $reason . "</p>
+                     <p>Please contact the Registrar's office for further clarification.</p>
+                     </body></html>";
+            sendEmail($student['email'], $subject, $body);
         }
     }
 }
 
-// Handle remove
+// Handle remove from blacklist
 if(isset($_GET['remove'])) {
     $blacklistID = (int)$_GET['remove'];
-    $updateSql = "UPDATE blacklist SET status = 'removed' WHERE blacklistID = $blacklistID";
-    $db->query($updateSql);
+    
+    // Get the blacklist record first
+    $getSql = "SELECT * FROM blacklist WHERE blacklistID = $blacklistID";
+    $getResult = $db->query($getSql);
+    $blacklistRecord = $getResult->fetch_assoc();
+    
+    if($blacklistRecord) {
+        $regNumber = $blacklistRecord['regNumber'];
+        
+        // Update blacklist status
+        $updateSql = "UPDATE blacklist SET status = 'removed' WHERE blacklistID = $blacklistID";
+        $db->query($updateSql);
+        
+        // Update student status back to pending
+        $updateStudentSql = "UPDATE students SET applicationStatus = 'pending', registrar_status = 'approved', registrar_reason = NULL WHERE regNumber = '$regNumber'";
+        $db->query($updateStudentSql);
+        
+        // Send notification email to student
+        $studentSql = "SELECT u.email, u.name FROM students s JOIN users u ON s.userID = u.userID WHERE s.regNumber = '$regNumber'";
+        $studentResult = $db->query($studentSql);
+        if($studentResult && $studentResult->num_rows > 0) {
+            $student = $studentResult->fetch_assoc();
+            if($student && $student['email']) {
+                $subject = "Hostel Application Status Update";
+                $body = "<html><body>
+                         <h2>Hostel Allocation System</h2>
+                         <p>Dear " . $student['name'] . ",</p>
+                         <p>Your name has been <strong style='color:#2e7d32;'>REMOVED</strong> from the blacklist.</p>
+                         <p>You may now proceed with your hostel application.</p>
+                         <p>Please log in and complete your details.</p>
+                         </body></html>";
+                sendEmail($student['email'], $subject, $body);
+            }
+        }
+    }
+    
     header("Location: blacklist.php?view=list&dept=" . $departmentFilter);
     exit();
 }
 
-// Get blacklist students (with department filter)
+// Get blacklist students
 $blacklistSql = "SELECT * FROM blacklist WHERE status = 'active' $departmentWhere ORDER BY dateAdded DESC";
 $blacklistResult = $db->query($blacklistSql);
 $blacklistStudents = array();
@@ -110,6 +185,7 @@ if($blacklistResult) {
         
         .btn-add{background-color:#2e7d32;color:white;border:none;padding:8px 20px;border-radius:5px;cursor:pointer;}
         .btn-remove{background-color:#dc3545;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;}
+        .btn-view{background-color:#17a2b8;color:white;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;font-size:11px;}
         
         .data-table{width:100%;border-collapse:collapse;margin-top:15px;}
         .data-table th{background-color:#8B4513;color:white;padding:12px;text-align:left;}
@@ -142,10 +218,9 @@ if($blacklistResult) {
     <div class="university-name">Daeyang University</div>
     <div class="nav-links">
         <a href="dashboard.php?page=home">Home</a>
-        <a href="dashboard.php?page=pending">Pending Students</a>
         <a href="blacklist.php" class="active">Blacklist</a>
         <a href="fee_requests.php">Fee Requests</a>
-        <a href="dashboard.php?page=approved">Approved Students</a>
+        <a href="reports.php">Reports</a>
         <a href="dashboard.php?page=profile">Profile</a>
         <a href="../logout.php">Logout</a>
     </div>
@@ -163,27 +238,24 @@ if($blacklistResult) {
         <a href="blacklist.php?view=list" class="sub-tab <?php echo ($showList) ? 'active' : ''; ?>">Blacklisted Students</a>
     </div>
     
-    <!-- ADD TO BLACKLIST TAB -->
     <?php if(!$showList): ?>
         <div class="content-card">
-            <h2>Add to Blacklist</h2>
+            <h2>Add/Update Student on Blacklist</h2>
             <form method="POST">
                 <div class="form-row">
                     <div class="form-group"><label>Registration Number</label><input type="text" name="regNumber" required></div>
                     <div class="form-group"><label>Student Name</label><input type="text" name="studentName" required></div>
                 </div>
                 <div class="form-group"><label>Reason</label><textarea name="reason" rows="3" required></textarea></div>
-                <button type="submit" name="add_blacklist" class="btn-add">Add to Blacklist</button>
+                <button type="submit" name="add_blacklist" class="btn-add">Add/Update Blacklist</button>
             </form>
         </div>
     <?php endif; ?>
     
-    <!-- BLACKLISTED STUDENTS LIST TAB -->
     <?php if($showList): ?>
         <div class="content-card">
             <h2>Blacklisted Students</h2>
             
-            <!-- Department Filter Dropdown -->
             <div class="filter-dropdown">
                 <label>Filter by Department:</label>
                 <select id="deptFilter" onchange="window.location.href='blacklist.php?view=list&dept='+this.value">
@@ -202,6 +274,7 @@ if($blacklistResult) {
                                 <th>Registration Number</th>
                                 <th>Student Name</th>
                                 <th>Reason</th>
+                                <th>Evidence</th>
                                 <th>Date Added</th>
                                 <th>Added By</th>
                                 <th>Action</th>
@@ -213,16 +286,23 @@ if($blacklistResult) {
                                     <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
                                     <td><?php echo htmlspecialchars($student['studentName']); ?></td>
                                     <td><?php echo htmlspecialchars($student['reason']); ?></td>
+                                    <td>
+                                        <?php if(isset($student['evidence_image']) && $student['evidence_image']): ?>
+                                            <a href="../uploads/blacklist/<?php echo $student['evidence_image']; ?>" target="_blank" class="btn-view">View Evidence</a>
+                                        <?php else: ?>
+                                            <span style="color:#999;">No evidence</span>
+                                        <?php endif; ?>
+                                     </td>
                                     <td><?php echo $student['dateAdded']; ?></td>
                                     <td><?php echo $student['addedBy']; ?></td>
-                                    <td><a href="blacklist.php?remove=<?php echo $student['blacklistID']; ?>&view=list&dept=<?php echo $departmentFilter; ?>" class="btn-remove" onclick="return confirm('Remove this student?')">Remove</a></td>
+                                    <td><a href="blacklist.php?remove=<?php echo $student['blacklistID']; ?>&view=list&dept=<?php echo $departmentFilter; ?>" class="btn-remove" onclick="return confirm('Remove this student from blacklist?')">Remove</a></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
             <?php else: ?>
-                <p>No students in blacklist for the selected department.</p>
+                <p>No students in blacklist.</p>
             <?php endif; ?>
         </div>
     <?php endif; ?>

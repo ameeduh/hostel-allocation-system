@@ -27,7 +27,6 @@ if($result && $result->num_rows > 0) {
 }
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'home';
-$departmentFilter = isset($_GET['dept']) ? $_GET['dept'] : 'all';
 
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     $phone = $db->escape($_POST['phone']);
@@ -77,12 +76,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
                 if($user && $user['email']) {
                     require_once '../config/mail_config.php';
                     $subject = "Password Changed Notification";
-                    $body = "<html><body>
-                             <h2>Hostel Allocation System</h2>
-                             <p>Dear " . $user['name'] . ",</p>
-                             <p>Your password was successfully changed on " . date('Y-m-d H:i:s') . ".</p>
-                             <p>If you did not make this change, please contact the Administrator immediately.</p>
-                             </body></html>";
+                    $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $user['name'] . ",</p><p>Your password was successfully changed on " . date('Y-m-d H:i:s') . ".</p><p>If you did not make this change, please contact the Administrator immediately.</p></body></html>";
                     sendEmail($user['email'], $subject, $body);
                 }
             } else {
@@ -96,34 +90,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
     }
 }
 
-// Function to build department filter WHERE clause
-function getDepartmentFilter($departmentFilter) {
-    if($departmentFilter == 'ict') {
-        return " AND s.regNumber LIKE '%BscICT%'";
-    } elseif($departmentFilter == 'nursing') {
-        return " AND s.regNumber LIKE '%BscNM%'";
-    } elseif($departmentFilter == 'business') {
-        return " AND s.regNumber LIKE '%BscBA%'";
-    }
-    return "";
-}
-
-$departmentWhere = getDepartmentFilter($departmentFilter);
-
-// Get approved students (students who passed blacklist check)
-$sql = "SELECT s.studentID, s.regNumber, s.program, s.year, u.name 
-        FROM students s 
-        JOIN users u ON s.userID = u.userID 
-        WHERE (s.registrar_status = 'approved' OR s.registrar_status IS NULL) $departmentWhere
-        ORDER BY s.studentID";
-$result = $db->query($sql);
-$approvedStudents = array();
-if($result) {
-    while($row = $result->fetch_assoc()) {
-        $approvedStudents[] = $row;
-    }
-}
-
 // Stats for home page
 $totalStudents = 0;
 $totalResult = $db->query("SELECT COUNT(*) as total FROM students");
@@ -134,15 +100,12 @@ if($totalResult) {
 
 // Fee commitment count
 $feeCommitmentCount = 0;
-$feeCountSql = "SELECT COUNT(*) as total FROM students WHERE fee_commitment = 1";
+$feeCountSql = "SELECT COUNT(*) as total FROM fee_commitment_requests WHERE status = 'pending'";
 $feeCountResult = $db->query($feeCountSql);
 if($feeCountResult) {
     $row = $feeCountResult->fetch_assoc();
     $feeCommitmentCount = $row['total'];
 }
-
-// Approved students count
-$approvedCount = count($approvedStudents);
 
 // Blacklisted students count
 $blacklistCount = 0;
@@ -183,16 +146,6 @@ if($blacklistResult) {
         .stat-number{font-size:28px;font-weight:bold;color:#8B4513;}
         .stat-label{font-size:12px;color:#666;margin-top:5px;}
         
-        .filter-dropdown{margin-bottom:20px;display:flex;align-items:center;gap:15px;flex-wrap:wrap;}
-        .filter-dropdown label{font-weight:600;color:#8B4513;font-size:14px;}
-        .filter-dropdown select{padding:8px 15px;border:1px solid #ddd;border-radius:5px;font-size:13px;background:white;}
-        .filter-dropdown select:focus{border-color:#8B4513;outline:none;}
-        
-        .data-table{width:100%;border-collapse:collapse;margin-top:15px;}
-        .data-table th{background-color:#8B4513;color:white;padding:12px;text-align:left;font-size:13px;}
-        .data-table td{padding:10px;border-bottom:1px solid #eee;font-size:13px;}
-        .data-table tr:hover{background-color:#f9f9f9;}
-        
         .profile-field{padding:10px;border-bottom:1px solid #eee;}
         .profile-field label{font-size:12px;color:#666;display:block;margin-bottom:3px;}
         .profile-field p{font-size:15px;font-weight:500;color:#333;}
@@ -217,8 +170,6 @@ if($blacklistResult) {
             .nav-bar{flex-direction:column;gap:10px;}
             .nav-links{justify-content:center;}
             .stats-cards{flex-direction:column;}
-            .filter-dropdown{flex-direction:column;align-items:flex-start;}
-            .data-table{overflow-x:auto;display:block;}
         }
     </style>
 </head>
@@ -233,7 +184,6 @@ if($blacklistResult) {
         <a href="?page=home" class="<?php echo ($page=='home')?'active':''; ?>">Home</a>
         <a href="blacklist.php">Blacklist</a>
         <a href="fee_requests.php">Fee Requests</a>
-        <a href="?page=approved" class="<?php echo ($page=='approved')?'active':''; ?>">Approved Students</a>
         <a href="reports.php">Reports</a>
         <a href="?page=profile" class="<?php echo ($page=='profile')?'active':''; ?>">Profile</a>
         <a href="../logout.php">Logout</a>
@@ -253,54 +203,10 @@ if($blacklistResult) {
             <h2>Dashboard Overview</h2>
             <div class="stats-cards">
                 <div class="stat-card"><div class="stat-number"><?php echo $totalStudents; ?></div><div class="stat-label">Total Students</div></div>
-                <div class="stat-card"><div class="stat-number"><?php echo $feeCommitmentCount; ?></div><div class="stat-label">Fee Commitment</div></div>
-                <div class="stat-card"><div class="stat-number"><?php echo $approvedCount; ?></div><div class="stat-label">Approved Students</div></div>
+                <div class="stat-card"><div class="stat-number"><?php echo $feeCommitmentCount; ?></div><div class="stat-label">Pending Fee Requests</div></div>
+                <div class="stat-card"><div class="stat-number"><?php echo $blacklistCount; ?></div><div class="stat-label">Blacklisted Students</div></div>
             </div>
             <p style="margin-top:15px; color:#666;">Use the menu above to manage blacklist, fee commitment requests, and view reports.</p>
-        </div>
-        
-    <!-- APPROVED STUDENTS PAGE -->
-    <?php elseif($page == 'approved'): ?>
-        <div class="content-card">
-            <h2>Approved Students</h2>
-            
-            <!-- Department Filter Dropdown -->
-            <div class="filter-dropdown">
-                <label>Filter by Department:</label>
-                <select id="deptFilter" onchange="window.location.href='?page=approved&dept='+this.value">
-                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
-                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
-                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
-                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
-                </select>
-            </div>
-            
-            <?php if(count($approvedStudents) > 0): ?>
-                <div style="overflow-x: auto;">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Reg Number</th>
-                                <th>Program</th>
-                                <th>Year</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach($approvedStudents as $student): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($student['name']); ?></td>
-                                    <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
-                                    <td><?php echo htmlspecialchars($student['program']); ?></td>
-                                    <td><?php echo $student['year']; ?> Year</td
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php else: ?>
-                <p>No approved students found for the selected department.</p>
-            <?php endif; ?>
         </div>
         
     <!-- PROFILE PAGE -->

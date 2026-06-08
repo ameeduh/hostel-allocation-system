@@ -15,8 +15,20 @@ $departmentFilter = isset($_GET['dept']) ? $_GET['dept'] : 'all';
 $from_date = isset($_GET['from_date']) ? $_GET['from_date'] : '';
 $to_date = isset($_GET['to_date']) ? $_GET['to_date'] : '';
 
-// Function to build department filter
+// Function to build department filter for fee_commitment_requests (uses students table)
 function getDeptWhere($departmentFilter) {
+    if($departmentFilter == 'ict') {
+        return " AND s.regNumber LIKE '%BscICT%'";
+    } elseif($departmentFilter == 'nursing') {
+        return " AND s.regNumber LIKE '%BscNM%'";
+    } elseif($departmentFilter == 'business') {
+        return " AND s.regNumber LIKE '%BscBA%'";
+    }
+    return "";
+}
+
+// Function to build department filter for blacklist (uses blacklist table directly)
+function getBlacklistDeptWhere($departmentFilter) {
     if($departmentFilter == 'ict') {
         return " AND regNumber LIKE '%BscICT%'";
     } elseif($departmentFilter == 'nursing') {
@@ -28,15 +40,16 @@ function getDeptWhere($departmentFilter) {
 }
 
 $deptWhere = getDeptWhere($departmentFilter);
+$blacklistDeptWhere = getBlacklistDeptWhere($departmentFilter);
 
-// Build date filter
+// Build date filter for fee commitments
 $dateWhere = "";
 if($from_date && $to_date) {
-    $dateWhere = " AND approvedDate BETWEEN '$from_date' AND '$to_date'";
+    $dateWhere = " AND fc.approvedDate BETWEEN '$from_date' AND '$to_date'";
 } elseif($from_date) {
-    $dateWhere = " AND approvedDate >= '$from_date'";
+    $dateWhere = " AND fc.approvedDate >= '$from_date'";
 } elseif($to_date) {
-    $dateWhere = " AND approvedDate <= '$to_date'";
+    $dateWhere = " AND fc.approvedDate <= '$to_date'";
 }
 
 // Build date filter for blacklist
@@ -75,7 +88,7 @@ if($approvedResult) {
 }
 
 // Get blacklisted students
-$blacklistSql = "SELECT * FROM blacklist WHERE status = 'active' $deptWhere $blacklistDateWhere ORDER BY dateAdded DESC";
+$blacklistSql = "SELECT * FROM blacklist WHERE status = 'active' $blacklistDeptWhere $blacklistDateWhere ORDER BY dateAdded DESC";
 $blacklistResult = $db->query($blacklistSql);
 $blacklistedStudents = array();
 if($blacklistResult) {
@@ -114,14 +127,14 @@ $blacklistCount = count($blacklistedStudents);
         .content-card h2{color:#8B4513;font-size:18px;margin-bottom:15px;border-bottom:2px solid #FFD700;display:inline-block;padding-bottom:5px;}
         
         .report-tabs{display:flex;gap:5px;margin-bottom:20px;border-bottom:2px solid #8B4513;flex-wrap:wrap;}
-        .report-tab{padding:10px 20px;background:none;border:none;cursor:pointer;font-size:14px;color:#666;transition:all 0.3s;}
+        .report-tab{padding:10px 20px;background:none;border:none;cursor:pointer;font-size:14px;color:#666;transition:all 0.3s;text-decoration:none;display:inline-block;}
         .report-tab:hover{color:#8B4513;}
         .report-tab.active{color:#8B4513;border-bottom:2px solid #FFD700;font-weight:600;}
         
         .filter-bar{display:flex;gap:15px;margin-bottom:20px;flex-wrap:wrap;align-items:center;padding:10px 0;border-bottom:1px solid #eee;}
         .filter-group{display:flex;align-items:center;gap:8px;}
         .filter-group label{font-weight:600;color:#8B4513;font-size:13px;}
-        .filter-group select,.filter-group input{padding:6px 12px;border:1px solid #ddd;border-radius:4px;font-size:13px;}
+        .filter-group select,.filter-group input{padding:6px 12px;border:1px solid #ddd;border-radius:4px;font-size:13px;background:white;}
         .filter-group select:focus,.filter-group input:focus{border-color:#8B4513;outline:none;}
         .btn-filter{background-color:#8B4513;color:white;border:none;padding:6px 15px;border-radius:4px;cursor:pointer;}
         .btn-filter:hover{background-color:#6d3710;}
@@ -168,7 +181,6 @@ $blacklistCount = count($blacklistedStudents);
         <a href="dashboard.php?page=home">Home</a>
         <a href="blacklist.php">Blacklist</a>
         <a href="fee_requests.php">Fee Requests</a>
-        <a href="dashboard.php?page=approved">Approved Students</a>
         <a href="reports.php" class="active">Reports</a>
         <a href="dashboard.php?page=profile">Profile</a>
         <a href="../logout.php">Logout</a>
@@ -215,7 +227,7 @@ $blacklistCount = count($blacklistedStudents);
             <button class="btn-filter" onclick="clearFilter()">Clear Filter</button>
         </div>
         
-        <!-- Export Buttons - Only Excel now, PDF via Print -->
+        <!-- Export Buttons -->
         <div class="export-buttons">
             <button onclick="window.print()" class="btn-export">Print / Save as PDF</button>
             <a href="export_csv.php?type=<?php echo $activeTab; ?>&dept=<?php echo $departmentFilter; ?>&from_date=<?php echo $from_date; ?>&to_date=<?php echo $to_date; ?>" class="btn-export">Export Excel</a>
@@ -246,7 +258,7 @@ $blacklistCount = count($blacklistedStudents);
                                 <td><?php echo htmlspecialchars($student['studentName']); ?></td>
                                 <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
                                 <td><?php echo htmlspecialchars($student['program']); ?></td>
-                                <td><?php echo $student['year']; ?> Year</td>
+                                <td><?php echo $student['year']; ?> Year</td
                                 <td><?php echo $student['gender']; ?></td>
                                 <td style="max-width:200px;"><?php echo htmlspecialchars($student['reason']); ?></td>
                                 <td><?php echo $student['approvedDate']; ?></td>
@@ -262,11 +274,11 @@ $blacklistCount = count($blacklistedStudents);
                                         echo '<span class="badge badge-danger">Expired</span>';
                                     }
                                     ?>
-                                </td>
+                                 </td
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
-                    </table>
+                    </table
                 </div>
             <?php else: ?>
                 <p>No approved fee commitment students found for the selected criteria.</p>

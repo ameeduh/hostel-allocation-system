@@ -18,9 +18,12 @@ $reportRoom = isset($_GET['report_room']) ? $_GET['report_room'] : '';
 $from_date = isset($_GET['from_date']) ? $_GET['from_date'] : '';
 $to_date = isset($_GET['to_date']) ? $_GET['to_date'] : '';
 
-// Get filters for allocated students
 $allocatedHostel = isset($_GET['allocated_hostel']) ? $_GET['allocated_hostel'] : '';
 $allocatedRoom = isset($_GET['allocated_room']) ? $_GET['allocated_room'] : '';
+
+// For Available Rooms tab
+$availableTab = isset($_GET['available_tab']) ? $_GET['available_tab'] : '';
+$availableHostel = isset($_GET['available_hostel']) ? $_GET['available_hostel'] : 'Eswanthini';
 
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     $phone = $_POST['phone'];
@@ -31,7 +34,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     exit();
 }
 
-// Handle password change
 $password_message = '';
 $password_message_type = '';
 
@@ -68,12 +70,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
                 if($user && $user['email']) {
                     require_once '../config/mail_config.php';
                     $subject = "Password Changed Notification";
-                    $body = "<html><body>
-                             <h2>Hostel Allocation System</h2>
-                             <p>Dear " . $user['name'] . ",</p>
-                             <p>Your password was successfully changed on " . date('Y-m-d H:i:s') . ".</p>
-                             <p>If you did not make this change, please contact the Administrator immediately.</p>
-                             </body></html>";
+                    $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $user['name'] . ",</p><p>Your password was successfully changed on " . date('Y-m-d H:i:s') . ".</p><p>If you did not make this change, please contact the Administrator immediately.</p></body></html>";
                     sendEmail($user['email'], $subject, $body);
                 }
             } else {
@@ -89,7 +86,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
 
 $profileUpdated = isset($_GET['updated']);
 
-// Get stats for dashboard
 $totalAllocated = 0;
 $allocatedResult = $db->query("SELECT COUNT(*) as total FROM students WHERE applicationStatus = 'allocated' AND allocationStatus = 'active'");
 if($allocatedResult) {
@@ -118,10 +114,8 @@ if($studentsResult) {
     $totalStudents = $row['total'];
 }
 
-// Get list of hostels for dropdown
 $hostels = ['Eswanthini', 'Seychells', 'Namibia', 'Botswana', 'Lesotho'];
 
-// Get rooms for allocated students filter
 $roomsList = array();
 if($allocatedHostel) {
     $roomSql = "SELECT DISTINCT roomNumber, roomID FROM rooms WHERE hostelName = '$allocatedHostel' ORDER BY roomNumber";
@@ -133,7 +127,6 @@ if($allocatedHostel) {
     }
 }
 
-// Get rooms for reports filter
 $reportRoomsList = array();
 if($reportHostel) {
     $roomSql = "SELECT DISTINCT roomNumber, roomID FROM rooms WHERE hostelName = '$reportHostel' ORDER BY roomNumber";
@@ -145,7 +138,6 @@ if($reportHostel) {
     }
 }
 
-// Build WHERE clause for allocated students
 $allocatedWhere = " WHERE s.applicationStatus = 'allocated' AND s.allocationStatus = 'active'";
 if($allocatedHostel) {
     $allocatedWhere .= " AND r.hostelName = '$allocatedHostel'";
@@ -154,7 +146,6 @@ if($allocatedRoom) {
     $allocatedWhere .= " AND r.roomNumber = '$allocatedRoom'";
 }
 
-// Get allocated students
 $allocatedSql = "SELECT s.studentID, s.regNumber, u.name as studentName, s.allocatedRoomID, s.allocatedDate, s.gender, s.program, s.year, r.roomNumber, r.hostelName 
                 FROM students s 
                 JOIN users u ON s.userID = u.userID 
@@ -169,7 +160,25 @@ if($allocatedResult) {
     }
 }
 
-// Build WHERE clause for reports
+// Get available rooms for the selected hostel
+$availableRoomsList = array();
+$totalAvailableBeds = 0;
+$roomsWithBeds = 0;
+
+if($availableHostel) {
+    $roomSql = "SELECT * FROM rooms WHERE hostelName = '$availableHostel' ORDER BY roomNumber";
+    $roomResult = $db->query($roomSql);
+    if($roomResult) {
+        while($row = $roomResult->fetch_assoc()) {
+            $availableRoomsList[] = $row;
+            if($row['availableBeds'] > 0) {
+                $totalAvailableBeds += $row['availableBeds'];
+                $roomsWithBeds++;
+            }
+        }
+    }
+}
+
 $reportWhere = " WHERE s.applicationStatus = 'allocated' AND s.allocationStatus = 'active'";
 if($reportHostel) {
     $reportWhere .= " AND r.hostelName = '$reportHostel'";
@@ -185,7 +194,6 @@ if($from_date && $to_date) {
     $reportWhere .= " AND s.allocatedDate <= '$to_date'";
 }
 
-// Get report data
 $reportSql = "SELECT s.studentID, s.regNumber, u.name as studentName, s.allocatedRoomID, s.allocatedDate, s.gender, s.program, s.year, r.roomNumber, r.hostelName 
               FROM students s 
               JOIN users u ON s.userID = u.userID 
@@ -226,7 +234,7 @@ if($reportResult) {
         .content-card h2{color:#8B4513;font-size:18px;margin-bottom:15px;border-bottom:2px solid #FFD700;display:inline-block;padding-bottom:5px;}
         
         .sub-tabs{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid #ddd;padding-bottom:10px;}
-        .sub-tab{padding:8px 20px;text-decoration:none;border-radius:5px;background:#f0f0f0;color:#333;}
+        .sub-tab{padding:8px 20px;text-decoration:none;border-radius:5px;background:#f0f0f0;color:#333;cursor:pointer;}
         .sub-tab.active{background:#8B4513;color:white;}
         .sub-tab:hover{background:#8B4513;color:white;}
         
@@ -253,6 +261,11 @@ if($reportResult) {
         .data-table tr:hover{background-color:#f9f9f9;}
         
         .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;}
+        .badge-available{background:#d4edda;color:#155724;}
+        .badge-full{background:#f8d7da;color:#721c24;}
+        
+        .summary-box{background:#e3f2fd;padding:12px 20px;border-radius:8px;margin-top:20px;border-left:4px solid #2196f3;}
+        .summary-box strong{color:#1565c0;}
         
         .profile-field{padding:10px;border-bottom:1px solid #eee;}
         .profile-field label{font-size:12px;color:#666;display:block;margin-bottom:3px;}
@@ -324,6 +337,26 @@ if($reportResult) {
         function clearReportFilter() {
             window.location.href = 'dashboard.php?page=reports';
         }
+        
+        // Tab switching for Allocated Students page
+        function showAllocatedTab() {
+            document.getElementById('allocatedTabContent').style.display = 'block';
+            document.getElementById('availableTabContent').style.display = 'none';
+            document.getElementById('allocatedTabBtn').classList.add('active');
+            document.getElementById('availableTabBtn').classList.remove('active');
+        }
+        
+        function showAvailableTab() {
+            document.getElementById('allocatedTabContent').style.display = 'none';
+            document.getElementById('availableTabContent').style.display = 'block';
+            document.getElementById('availableTabBtn').classList.add('active');
+            document.getElementById('allocatedTabBtn').classList.remove('active');
+        }
+        
+        function filterAvailableRooms() {
+            var hostel = document.getElementById('availableHostelSelect').value;
+            window.location.href = 'dashboard.php?page=allocated&available_tab=1&available_hostel=' + hostel;
+        }
     </script>
 </head>
 <body>
@@ -338,6 +371,7 @@ if($reportResult) {
         <a href="?page=allocated" class="<?php echo ($page=='allocated')?'active':''; ?>">Allocated Students</a>
         <a href="?page=reports" class="<?php echo ($page=='reports')?'active':''; ?>">Reports</a>
         <a href="?page=clearance" class="<?php echo ($page=='clearance')?'active':''; ?>">Clearance Requests</a>
+        <a href="blacklist.php">Blacklist</a>
         <a href="?page=profile" class="<?php echo ($page=='profile')?'active':''; ?>">Profile</a>
         <a href="../logout.php">Logout</a>
     </div>
@@ -360,70 +394,137 @@ if($reportResult) {
                 <div class="stat-card"><div class="stat-number"><?php echo $availableRooms; ?></div><div class="stat-label">Available Rooms</div></div>
                 <div class="stat-card"><div class="stat-number"><?php echo $pendingClearance; ?></div><div class="stat-label">Pending Clearance</div></div>
             </div>
-            <p style="margin-top:15px; color:#666;">Rooms are automatically allocated by the system after fee verification. Use the menu above to view allocated students and generate reports.</p>
         </div>
         
-    <!-- ALLOCATED STUDENTS PAGE -->
+    <!-- ALLOCATED STUDENTS PAGE (with tabs) -->
     <?php elseif($page == 'allocated'): ?>
         <div class="content-card">
-            <h2>Allocated Students</h2>
+            <h2>Hostel Management</h2>
             
-            <div class="filter-bar">
-                <div class="filter-group">
-                    <label>Hostel:</label>
-                    <select id="allocatedHostel" onchange="updateRooms()">
-                        <option value="">All Hostels</option>
-                        <?php foreach($hostels as $hostel): ?>
-                            <option value="<?php echo $hostel; ?>" <?php echo ($allocatedHostel == $hostel) ? 'selected' : ''; ?>><?php echo $hostel; ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Room:</label>
-                    <select id="allocatedRoom" onchange="applyAllocatedFilter()">
-                        <option value="">All Rooms</option>
-                        <?php foreach($roomsList as $room): ?>
-                            <option value="<?php echo $room['roomNumber']; ?>" <?php echo ($allocatedRoom == $room['roomNumber']) ? 'selected' : ''; ?>><?php echo $room['roomNumber']; ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <button class="btn-filter" onclick="clearAllocatedFilter()">Clear Filter</button>
+            <!-- Tabs -->
+            <div class="sub-tabs">
+                <a href="javascript:void(0)" id="allocatedTabBtn" onclick="showAllocatedTab()" class="sub-tab <?php echo (!$availableTab) ? 'active' : ''; ?>">Allocated Students</a>
+                <a href="javascript:void(0)" id="availableTabBtn" onclick="showAvailableTab()" class="sub-tab <?php echo ($availableTab) ? 'active' : ''; ?>">Available Rooms</a>
             </div>
             
-            <?php if(count($allocatedStudents) > 0): ?>
-                <div style="overflow-x: auto;">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Student Name</th>
-                                <th>Reg Number</th>
-                                <th>Program</th>
-                                <th>Year</th>
-                                <th>Gender</th>
-                                <th>Room Number</th>
-                                <th>Hostel</th>
-                                <th>Allocated Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach($allocatedStudents as $student): ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($student['studentName']); ?></td>
-                                <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
-                                <td><?php echo htmlspecialchars($student['program']); ?></td>
-                                <td><?php echo $student['year']; ?> Year</td>
-                                <td><?php echo $student['gender']; ?></td>
-                                <td><?php echo htmlspecialchars($student['roomNumber']); ?></td>
-                                <td><?php echo htmlspecialchars($student['hostelName']); ?></td>
-                                <td><?php echo $student['allocatedDate']; ?></td>
-                            </tr>
+            <!-- TAB 1: Allocated Students (Existing content) -->
+            <div id="allocatedTabContent" style="display: <?php echo (!$availableTab) ? 'block' : 'none'; ?>;">
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label>Hostel:</label>
+                        <select id="allocatedHostel" onchange="updateRooms()">
+                            <option value="">All Hostels</option>
+                            <?php foreach($hostels as $hostel): ?>
+                                <option value="<?php echo $hostel; ?>" <?php echo ($allocatedHostel == $hostel) ? 'selected' : ''; ?>><?php echo $hostel; ?></option>
                             <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Room:</label>
+                        <select id="allocatedRoom" onchange="applyAllocatedFilter()">
+                            <option value="">All Rooms</option>
+                            <?php foreach($roomsList as $room): ?>
+                                <option value="<?php echo $room['roomNumber']; ?>" <?php echo ($allocatedRoom == $room['roomNumber']) ? 'selected' : ''; ?>><?php echo $room['roomNumber']; ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <button class="btn-filter" onclick="clearAllocatedFilter()">Clear Filter</button>
                 </div>
-            <?php else: ?>
-                <p>No allocated students found for the selected criteria.</p>
-            <?php endif; ?>
+                
+                <?php if(count($allocatedStudents) > 0): ?>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Student Name</th>
+                                    <th>Reg Number</th>
+                                    <th>Program</th>
+                                    <th>Year</th>
+                                    <th>Gender</th>
+                                    <th>Room Number</th>
+                                    <th>Hostel</th>
+                                    <th>Allocated Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($allocatedStudents as $student): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($student['studentName']); ?></td>
+                                    <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
+                                    <td><?php echo htmlspecialchars($student['program']); ?></td>
+                                    <td><?php echo htmlspecialchars($student['year']); ?> Year</td>
+                                    <td><?php echo htmlspecialchars($student['gender']); ?></td>
+                                    <td><?php echo htmlspecialchars($student['roomNumber']); ?></td>
+                                    <td><?php echo htmlspecialchars($student['hostelName']); ?></td>
+                                    <td><?php echo htmlspecialchars($student['allocatedDate']); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <p>No allocated students found for the selected criteria.</p>
+                <?php endif; ?>
+            </div>
+            
+            <!-- TAB 2: Available Rooms (NEW FEATURE) -->
+            <div id="availableTabContent" style="display: <?php echo ($availableTab) ? 'block' : 'none'; ?>;">
+                <!-- Hostel Filter Dropdown -->
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label>Select Hostel:</label>
+                        <select id="availableHostelSelect" onchange="filterAvailableRooms()">
+                            <?php foreach($hostels as $hostel): ?>
+                                <option value="<?php echo $hostel; ?>" <?php echo ($availableHostel == $hostel) ? 'selected' : ''; ?>><?php echo $hostel; ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                
+                <?php if(count($availableRoomsList) > 0): ?>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Room Number</th>
+                                    <th>Hostel Name</th>
+                                    <th>Gender</th>
+                                    <th>Capacity</th>
+                                    <th>Available Beds</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($availableRoomsList as $room): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($room['roomNumber']); ?></td>
+                                    <td><?php echo htmlspecialchars($room['hostelName']); ?></td>
+                                    <td><?php echo htmlspecialchars($room['gender']); ?></td>
+                                    <td><?php echo $room['capacity']; ?></td>
+                                    <td><?php echo $room['availableBeds']; ?></td>
+                                    <td>
+                                        <?php if($room['availableBeds'] > 0): ?>
+                                            <span class="badge badge-available">Available</span>
+                                        <?php else: ?>
+                                            <span class="badge badge-full">Full</span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Summary Box -->
+                    <div class="summary-box">
+                        <strong>Summary for <?php echo $availableHostel; ?> Hostel:</strong><br>
+                        <?php echo $roomsWithBeds; ?> room(s) have available beds<br>
+                        <?php echo $totalAvailableBeds; ?> total bed(s) available
+                    </div>
+                <?php else: ?>
+                    <p>No rooms found for <?php echo $availableHostel; ?> hostel.</p>
+                <?php endif; ?>
+            </div>
         </div>
         
     <!-- REPORTS PAGE -->
@@ -488,11 +589,11 @@ if($reportResult) {
                                 <td><?php echo htmlspecialchars($student['studentName']); ?></td>
                                 <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
                                 <td><?php echo htmlspecialchars($student['program']); ?></td>
-                                <td><?php echo $student['year']; ?> Year</td>
-                                <td><?php echo $student['gender']; ?></td>
+                                <td><?php echo htmlspecialchars($student['year']); ?> Year</td>
+                                <td><?php echo htmlspecialchars($student['gender']); ?></td>
                                 <td><?php echo htmlspecialchars($student['roomNumber']); ?></td>
                                 <td><?php echo htmlspecialchars($student['hostelName']); ?></td>
-                                <td><?php echo $student['allocatedDate']; ?></td>
+                                <td><?php echo htmlspecialchars($student['allocatedDate']); ?></td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>

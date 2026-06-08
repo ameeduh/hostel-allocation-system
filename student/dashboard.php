@@ -47,6 +47,9 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
 
 // Handle details form submission with blacklist check
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
+    // Get email from form submission
+    $submittedEmail = $_POST['email'];
+    
     // Check if student is blacklisted FIRST
     $blacklistSql = "SELECT * FROM blacklist WHERE regNumber = '$regNumber' AND status = 'active'";
     $blacklistResult = $db->query($blacklistSql);
@@ -61,16 +64,24 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
                       WHERE studentID = $studentID";
         $db->query($updateSql);
         
-        // Send rejection email
-        $userSql = "SELECT email, name FROM users WHERE userID = {$_SESSION['user_id']}";
-        $userResult = $db->query($userSql);
-        $user = $userResult->fetch_assoc();
+        // Also update user's email if provided
+        if($submittedEmail) {
+            $db->query("UPDATE users SET email = '$submittedEmail' WHERE userID = {$_SESSION['user_id']}");
+        }
         
-        if($user && $user['email']) {
+        // Send rejection email using the email from the form
+        if($submittedEmail) {
             require_once '../config/mail_config.php';
-            $subject = "Hostel Application Status";
-            $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $user['name'] . ",</p><p>Your hostel application has been <strong style='color:#c62828;'>REJECTED</strong>.</p><p><strong>Reason:</strong> " . $blacklist['reason'] . "</p><p>Please contact the Registrar's office for further clarification.</p></body></html>";
-            sendEmail($user['email'], $subject, $body);
+            $subject = "Hostel Application Status - Rejected";
+            $body = "<html><body>
+                     <h2>Hostel Allocation System</h2>
+                     <p>Dear " . $_SESSION['name'] . ",</p>
+                     <p>Your hostel application has been <strong style='color:#c62828;'>REJECTED</strong>.</p>
+                     <p><strong>Reason:</strong> " . $blacklist['reason'] . "</p>
+                     <p>You have been blacklisted by the Registrar/Warden. Please contact the Registrar's office for further clarification.</p>
+                     <p>Regards,<br>Daeyang University</p>
+                     </body></html>";
+            sendEmail($submittedEmail, $subject, $body);
         }
         
         header("Location: dashboard.php?page=details&blacklisted=1");

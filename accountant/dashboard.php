@@ -417,7 +417,7 @@ $verifiedCount = count($verifiedStudents);
                         <tr>
                             <td><?php echo htmlspecialchars($student['name']); ?></td>
                             <td><?php echo htmlspecialchars($student['program']); ?></td>
-                            <td><?php echo $student['year']; ?> Year</td
+                            <td><?php echo $student['year']; ?> Year</td>
                             <td><?php echo $student['gender']; ?></td>
                             <td>
                                 <form method="POST" style="display:inline;">
@@ -471,7 +471,7 @@ $verifiedCount = count($verifiedStudents);
                         <tr>
                             <td><?php echo htmlspecialchars($student['name']); ?></td>
                             <td><?php echo htmlspecialchars($student['program']); ?></td>
-                            <td><?php echo $student['year']; ?> Year</td
+                            <td><?php echo $student['year']; ?> Year</td>
                             <td><?php echo $student['gender']; ?></td>
                             <td><?php echo htmlspecialchars($student['fee_commitment_note']); ?></td>
                             <td><span class="fee-badge">Pending</span></td>
@@ -522,10 +522,10 @@ $verifiedCount = count($verifiedStudents);
                     </thead>
                     <tbody>
                         <?php foreach($verifiedStudents as $student): ?>
-                        <td>
+                        <tr>
                             <td><?php echo htmlspecialchars($student['name']); ?></td>
                             <td><?php echo htmlspecialchars($student['program']); ?></td>
-                            <td><?php echo $student['year']; ?> Year</td
+                            <td><?php echo $student['year']; ?> Year</td>
                             <td><?php echo $student['gender']; ?></td>
                             <td><span class="status-badge">Approved</span></td>
                         </tr>

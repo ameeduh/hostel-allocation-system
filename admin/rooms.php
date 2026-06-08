@@ -10,7 +10,7 @@ require_once '../config/database.php';
 $db = new Database();
 
 // Get filter from URL
-$genderFilter = isset($_GET['gender_filter']) ? $_GET['gender_filter'] : 'all';
+$hostelFilter = isset($_GET['hostel_filter']) ? $_GET['hostel_filter'] : '';
 
 // Handle add room
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_room'])) {
@@ -23,7 +23,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_room'])) {
     $sql = "INSERT INTO rooms (roomNumber, hostelName, gender, capacity, availableBeds, status) 
             VALUES ('$roomNumber', '$hostelName', '$gender', $capacity, $availableBeds, 'available')";
     $db->query($sql);
-    header("Location: rooms.php?added=1&gender_filter=$genderFilter");
+    header("Location: rooms.php?added=1&hostel_filter=$hostelFilter");
     exit();
 }
 
@@ -31,41 +31,40 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_room'])) {
 if(isset($_GET['delete'])) {
     $roomID = (int)$_GET['delete'];
     
-    // First, delete any room preferences for this room
     $db->query("DELETE FROM room_preferences WHERE preferredRoomID = $roomID");
     
-    // Check if room is allocated to any active student
     $checkSql = "SELECT COUNT(*) as count FROM students WHERE allocatedRoomID = $roomID AND allocationStatus = 'active'";
     $checkResult = $db->query($checkSql);
     $allocated = $checkResult->fetch_assoc()['count'];
     
     if($allocated > 0) {
-        header("Location: rooms.php?error=allocated&gender_filter=$genderFilter");
+        header("Location: rooms.php?error=allocated&hostel_filter=$hostelFilter");
         exit();
     }
     
     $sql = "DELETE FROM rooms WHERE roomID = $roomID";
     $db->query($sql);
-    header("Location: rooms.php?deleted=1&gender_filter=$genderFilter");
+    header("Location: rooms.php?deleted=1&hostel_filter=$hostelFilter");
     exit();
 }
 
-// Build WHERE clause for gender filter
+// Build WHERE clause for hostel filter
 $whereClause = "";
-if($genderFilter == 'male') {
-    $whereClause = " WHERE gender = 'Male'";
-} elseif($genderFilter == 'female') {
-    $whereClause = " WHERE gender = 'Female'";
+if($hostelFilter) {
+    $whereClause = " WHERE hostelName = '$hostelFilter'";
 }
 
 // Get all rooms with filter
 $sql = "SELECT * FROM rooms $whereClause ORDER BY hostelName, roomNumber";
 $result = $db->query($sql);
-if ($result && is_object($result) && method_exists($result, 'fetch_all')) {
-    $rooms = $result->fetch_all(MYSQLI_ASSOC);
-} else {
-    $rooms = array();
+$rooms = array();
+if($result) {
+    while($row = $result->fetch_assoc()) {
+        $rooms[] = $row;
+    }
 }
+
+$hostels = ['Eswanthini', 'Seychells', 'Namibia', 'Botswana', 'Lesotho'];
 
 $added = isset($_GET['added']);
 $deleted = isset($_GET['deleted']);
@@ -106,6 +105,8 @@ $error = isset($_GET['error']) && $_GET['error'] == 'allocated';
         .filter-dropdown label { font-weight: 600; color: #8B4513; font-size: 13px; }
         .filter-dropdown select { padding: 8px 15px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; background: white; cursor: pointer; }
         .filter-dropdown select:focus { border-color: #8B4513; outline: none; }
+        .filter-dropdown button { background-color: #8B4513; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .filter-dropdown button:hover { background-color: #6d3710; }
         
         .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         .data-table th { background-color: #8B4513; color: white; padding: 12px; text-align: left; font-size: 13px; font-weight: 600; }
@@ -144,14 +145,18 @@ $error = isset($_GET['error']) && $_GET['error'] == 'allocated';
                 <div class="error-message">Cannot delete room because it has active student allocations!</div>
             <?php endif; ?>
 
-            <!-- Gender Filter Dropdown -->
+            <!-- Hostel Filter Dropdown -->
             <div class="filter-dropdown">
-                <label>Filter by Gender:</label>
-                <select id="genderFilter" onchange="window.location.href='rooms.php?gender_filter='+this.value">
-                    <option value="all" <?php echo ($genderFilter == 'all') ? 'selected' : ''; ?>>All Rooms</option>
-                    <option value="male" <?php echo ($genderFilter == 'male') ? 'selected' : ''; ?>>Male Rooms</option>
-                    <option value="female" <?php echo ($genderFilter == 'female') ? 'selected' : ''; ?>>Female Rooms</option>
+                <label>Filter by Hostel:</label>
+                <select id="hostelFilter" onchange="this.form.submit()">
+                    <option value="">All Hostels</option>
+                    <?php foreach($hostels as $hostel): ?>
+                        <option value="<?php echo $hostel; ?>" <?php echo ($hostelFilter == $hostel) ? 'selected' : ''; ?>><?php echo $hostel; ?></option>
+                    <?php endforeach; ?>
                 </select>
+                <form method="get" style="display:inline;">
+                    <button type="submit" name="hostel_filter" value="" class="btn-filter" style="background-color: #8B4513; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer;">Clear Filter</button>
+                </form>
             </div>
 
             <!-- Add Room Form -->
@@ -166,11 +171,9 @@ $error = isset($_GET['error']) && $_GET['error'] == 'allocated';
                         <div class="form-group">
                             <label>Hostel Name</label>
                             <select name="hostelName" required>
-                                <option value="Eswanthini">Eswanthini</option>
-                                <option value="Seychells">Seychells</option>
-                                <option value="Namibia">Namibia</option>
-                                <option value="Botswana">Botswana</option>
-                                <option value="Lesotho">Lesotho</option>
+                                <?php foreach($hostels as $hostel): ?>
+                                    <option value="<?php echo $hostel; ?>"><?php echo $hostel; ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group">
@@ -215,7 +218,7 @@ $error = isset($_GET['error']) && $_GET['error'] == 'allocated';
                                 <td><?php echo $room['availableBeds']; ?></td>
                                 <td><?php echo ($room['availableBeds'] > 0) ? '<span class="badge badge-available">Available</span>' : '<span class="badge badge-full">Full</span>'; ?></td>
                                 <td>
-                                    <a href="rooms.php?delete=<?php echo $room['roomID']; ?>&gender_filter=<?php echo $genderFilter; ?>" class="delete-btn" onclick="return confirm('Delete this room?')">Delete</a>
+                                    <a href="rooms.php?delete=<?php echo $room['roomID']; ?>&hostel_filter=<?php echo $hostelFilter; ?>" class="delete-btn" onclick="return confirm('Delete this room?')">Delete</a>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -231,5 +234,13 @@ $error = isset($_GET['error']) && $_GET['error'] == 'allocated';
             </div>
         </div>
     </div>
+    
+    <script>
+        // Simple function to handle filter change
+        document.getElementById('hostelFilter').addEventListener('change', function() {
+            var selected = this.value;
+            window.location.href = 'rooms.php?hostel_filter=' + selected;
+        });
+    </script>
 </body>
 </html>
