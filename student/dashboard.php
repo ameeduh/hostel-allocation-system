@@ -45,12 +45,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     exit();
 }
 
-// Handle details form submission with blacklist check
+// Handle details form submission with blacklist check and auto-approval
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
     // Get email from form submission
     $submittedEmail = $_POST['email'];
     
-    // Check if student is blacklisted FIRST
+    // FIRST: Check if student is blacklisted
     $blacklistSql = "SELECT * FROM blacklist WHERE regNumber = '$regNumber' AND status = 'active'";
     $blacklistResult = $db->query($blacklistSql);
     
@@ -64,12 +64,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
                       WHERE studentID = $studentID";
         $db->query($updateSql);
         
-        // Also update user's email if provided
+        // Update user email if provided
         if($submittedEmail) {
             $db->query("UPDATE users SET email = '$submittedEmail' WHERE userID = {$_SESSION['user_id']}");
         }
         
-        // Send rejection email using the email from the form
+        // Send rejection email
         if($submittedEmail) {
             require_once '../config/mail_config.php';
             $subject = "Hostel Application Status - Rejected";
@@ -78,8 +78,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
                      <p>Dear " . $_SESSION['name'] . ",</p>
                      <p>Your hostel application has been <strong style='color:#c62828;'>REJECTED</strong>.</p>
                      <p><strong>Reason:</strong> " . $blacklist['reason'] . "</p>
-                     <p>You have been blacklisted by the Registrar/Warden. Please contact the Registrar's office for further clarification.</p>
-                     <p>Regards,<br>Daeyang University</p>
+                     <p>You have been blacklisted. Please contact the Registrar's office.</p>
                      </body></html>";
             sendEmail($submittedEmail, $subject, $body);
         }
@@ -88,7 +87,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
         exit();
     }
     
-    // If not blacklisted, proceed with normal registration
+    // SECOND: Check if student is in paid_students list (auto-approve)
+    $paidSql = "SELECT * FROM paid_students WHERE regNumber = '$regNumber' AND status = 'active'";
+    $paidResult = $db->query($paidSql);
+    $isPaid = ($paidResult && $paidResult->num_rows > 0);
+    
+    // Save all student details first
     $program = $detectedProgram;
     $year = $_POST['year'];
     $phone = $_POST['phone'];
@@ -118,18 +122,40 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_details'])) {
                 guardian_relationship = '$guardian_relationship',
                 guardian_phone = '$guardian_phone',
                 agreement_confirmed = 1,
-                applicationStatus = 'pending'
+                applicationStatus = '" . ($isPaid ? 'approved' : 'pending') . "',
+                approved_source = " . ($isPaid ? "'paid_list'" : "NULL") . "
             WHERE studentID = $studentID";
     $db->query($sql1);
     
     $sql2 = "UPDATE users SET phone = '$phone', email = '$email' WHERE userID = {$_SESSION['user_id']}";
     $db->query($sql2);
     
-    header("Location: dashboard.php?page=details&success=1");
+    // If student is in paid list, send approval email
+    if($isPaid && $submittedEmail) {
+        require_once '../config/mail_config.php';
+        $subject = "Hostel Application - Approved!";
+        $body = "<html><body>
+                 <h2>Hostel Allocation System</h2>
+                 <p>Dear " . $_SESSION['name'] . ",</p>
+                 <p>Congratulations! Your hostel application has been <strong style='color:#2e7d32;'>APPROVED</strong>.</p>
+                 <p>You can now log in and select a room.</p>
+                 <p>Please go to the <strong>Select Room</strong> page to choose your preferred room.</p>
+                 <p>Once you select a room, it will be allocated to you immediately.</p>
+                 <p>Regards,<br>Daeyang University</p>
+                 </body></html>";
+        sendEmail($submittedEmail, $subject, $body);
+    }
+    
+    if($isPaid) {
+        header("Location: dashboard.php?page=details&approved=1");
+    } else {
+        header("Location: dashboard.php?page=details&success=1");
+    }
     exit();
 }
 
 $success = isset($_GET['success']);
+$approved = isset($_GET['approved']);
 $error = isset($_GET['error']);
 $profileUpdated = isset($_GET['updated']);
 $blacklisted = isset($_GET['blacklisted']);
@@ -236,6 +262,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
         
         .success-message{background-color:#d4edda;color:#155724;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
         .error-message{background-color:#f8d7da;color:#721c24;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
+        .info-message{background-color:#d1ecf1;color:#0c5460;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;font-size:13px;}
         
         .footer{background-color:#8B4513;color:white;padding:25px 40px;margin-top:20px;}
         .footer-content{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:25px;}
@@ -280,7 +307,10 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
 
     <div class="content-area">
         <?php if($success): ?>
-            <div class="success-message">Details saved successfully!</div>
+            <div class="success-message">Details saved successfully! Your application is pending payment verification.</div>
+        <?php endif; ?>
+        <?php if($approved): ?>
+            <div class="success-message">✅ Details saved and APPROVED! You can now select a room.</div>
         <?php endif; ?>
         <?php if($error): ?>
             <div class="error-message">Please confirm that all information is correct.</div>
@@ -300,15 +330,19 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
                 <p style="margin-top:10px;">Your application status: 
                     <strong>
                         <?php 
-                        if($status == 'pending') echo 'Pending Accountant Approval';
-                        elseif($status == 'approved' && $registrarStatus != 'approved') echo 'Pending Registrar Approval';
-                        elseif($status == 'approved' && $registrarStatus == 'approved') echo 'Eligible - Waiting for Room Allocation';
-                        elseif($status == 'allocated') echo 'Room Allocated';
-                        elseif($status == 'rejected') echo 'Rejected';
-                        else echo 'Not Submitted';
+                        if($status == 'pending') echo '⏳ Pending Payment Verification';
+                        elseif($status == 'approved') echo '✅ Approved - You can select a room';
+                        elseif($status == 'allocated') echo '🏠 Room Allocated';
+                        elseif($status == 'rejected') echo '❌ Rejected';
+                        else echo '📝 Not Submitted';
                         ?>
                     </strong>
                 </p>
+                <?php if($status == 'approved'): ?>
+                    <div class="info-message" style="margin-top:15px;">
+                        <strong>Next Step:</strong> Go to <strong>Select Room</strong> to choose your preferred room.
+                    </div>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
 
@@ -400,7 +434,17 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
                         <button type="submit" name="save_details" class="submit-btn">Submit Application</button>
                     </form>
                 <?php else: ?>
-                    <p>Your details have been submitted. Awaiting Accountant approval.</p>
+                    <p>Your details have been submitted. 
+                    <?php if($status == 'pending'): ?>
+                        Your application is pending payment verification. Please contact the Accounts office if you have paid.
+                    <?php elseif($status == 'approved'): ?>
+                        Your application is approved! Please go to <strong>Select Room</strong> to choose your room.
+                    <?php elseif($status == 'allocated'): ?>
+                        Your room has been allocated! Check your Room Details.
+                    <?php else: ?>
+                        Awaiting processing.
+                    <?php endif; ?>
+                    </p>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -428,7 +472,13 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
                         <p>No room allocated yet.</p>
                     <?php endif; ?>
                 <?php else: ?>
-                    <p>No room has been allocated to you yet. Complete your application and fee verification first.</p>
+                    <p>No room has been allocated to you yet. 
+                    <?php if($status == 'approved'): ?>
+                        Please go to <strong>Select Room</strong> to choose your room.
+                    <?php else: ?>
+                        Complete your application and payment verification first.
+                    <?php endif; ?>
+                    </p>
                 <?php endif; ?>
             </div>
         <?php endif; ?>

@@ -119,12 +119,12 @@ header('Content-Disposition: attachment; filename="report_' . $type . '_' . date
                 <tr>
                     <td><?php echo htmlspecialchars($student['studentName']); ?></td>
                     <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
-                    <td><?php echo htmlspecialchars($student['program']); ?></td
-                    <td><?php echo $student['year']; ?> Year</td
-                    <td><?php echo $student['gender']; ?></td
-                    <td><?php echo $student['approvedDate']; ?></td
-                    <td><?php echo $student['expiry_date']; ?></td
-                    <td><?php echo $student['days_remaining']; ?> days</td
+                    <td><?php echo htmlspecialchars($student['program']); ?></td>
+                    <td><?php echo $student['year']; ?> Year</td>
+                    <td><?php echo htmlspecialchars($student['gender']); ?></td>
+                    <td><?php echo htmlspecialchars($student['approvedDate']); ?></td>
+                    <td><?php echo htmlspecialchars($student['expiry_date']); ?></td>
+                    <td><?php echo htmlspecialchars($student['days_remaining']); ?> days</td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -149,10 +149,10 @@ header('Content-Disposition: attachment; filename="report_' . $type . '_' . date
                 <?php foreach($students as $student): ?>
                 <tr>
                     <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
-                    <td><?php echo htmlspecialchars($student['studentName']); ?></td
-                    <td><?php echo htmlspecialchars($student['reason']); ?></td
-                    <td><?php echo $student['dateAdded']; ?></td
-                    <td><?php echo $student['addedBy']; ?></td
+                    <td><?php echo htmlspecialchars($student['studentName']); ?></td>
+                    <td><?php echo htmlspecialchars($student['reason']); ?></td>
+                    <td><?php echo htmlspecialchars($student['dateAdded']); ?></td>
+                    <td><?php echo htmlspecialchars($student['addedBy']); ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

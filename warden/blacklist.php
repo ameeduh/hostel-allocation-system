@@ -13,6 +13,22 @@ $wardenName = $_SESSION['name'];
 
 $message = '';
 $messageType = '';
+$showList = isset($_GET['view']) && $_GET['view'] == 'list';
+$departmentFilter = isset($_GET['dept']) ? $_GET['dept'] : 'all';
+
+// Function to build department filter
+function getDepartmentFilter($departmentFilter) {
+    if($departmentFilter == 'ict') {
+        return " AND regNumber LIKE '%BscICT%'";
+    } elseif($departmentFilter == 'nursing') {
+        return " AND regNumber LIKE '%BscNM%'";
+    } elseif($departmentFilter == 'business') {
+        return " AND regNumber LIKE '%BscBA%'";
+    }
+    return "";
+}
+
+$departmentWhere = getDepartmentFilter($departmentFilter);
 
 // Handle add to blacklist
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
@@ -47,12 +63,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
         }
     }
     
-    // Check if student already exists in blacklist
+    // Check if student already exists
     $checkSql = "SELECT * FROM blacklist WHERE regNumber = '$regNumber'";
     $checkResult = $db->query($checkSql);
     
     if($checkResult && $checkResult->num_rows > 0) {
-        // UPDATE existing record
+        // Update existing
         $updateSql = "UPDATE blacklist SET 
                       studentName = '$studentName',
                       reason = '$reason', 
@@ -69,7 +85,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
             $messageType = "error";
         }
     } else {
-        // INSERT new record
+        // Insert new
         $insertSql = "INSERT INTO blacklist (regNumber, studentName, reason, evidence_image, dateAdded, addedBy, status) 
                       VALUES ('$regNumber', '$studentName', '$reason', '$evidenceImage', CURDATE(), '$wardenName', 'active')";
         if($db->query($insertSql)) {
@@ -81,7 +97,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
         }
     }
     
-    // Update student application status if exists
+    // Update student application status
     $updateSql = "UPDATE students SET applicationStatus = 'rejected', registrar_status = 'rejected', registrar_reason = '$reason' WHERE regNumber = '$regNumber'";
     $db->query($updateSql);
     
@@ -122,6 +138,28 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
         }
     }
 }
+
+// Handle remove from blacklist
+if(isset($_GET['remove'])) {
+    $blacklistID = (int)$_GET['remove'];
+    $deleteSql = "DELETE FROM blacklist WHERE blacklistID = $blacklistID";
+    if($db->query($deleteSql)) {
+        $message = "Student removed from blacklist.";
+        $messageType = "success";
+    }
+    header("Location: blacklist.php?view=list&dept=" . $departmentFilter);
+    exit();
+}
+
+// Get blacklisted students
+$blacklistSql = "SELECT * FROM blacklist WHERE status = 'active' $departmentWhere ORDER BY dateAdded DESC";
+$blacklistResult = $db->query($blacklistSql);
+$blacklistStudents = array();
+if($blacklistResult) {
+    while($row = $blacklistResult->fetch_assoc()) {
+        $blacklistStudents[] = $row;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -145,8 +183,16 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
         .welcome-section{background-color:white;margin:15px 40px;padding:15px 25px;border-radius:8px;border:1px solid #e0e0e0;border-left:5px solid #FFD700;}
         .welcome-section h1{font-size:20px;color:#333;margin-bottom:5px;}
         .content-area{margin:15px 40px;min-height:250px;}
-        .content-card{background:white;border-radius:8px;padding:20px;border:1px solid #e0e0e0;}
+        .content-card{background:white;border-radius:8px;padding:20px;border:1px solid #e0e0e0;margin-bottom:20px;}
         .content-card h2{color:#8B4513;font-size:18px;margin-bottom:15px;border-bottom:2px solid #FFD700;display:inline-block;padding-bottom:5px;}
+        
+        .sub-tabs{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid #ddd;padding-bottom:10px;flex-wrap:wrap;}
+        .sub-tab{padding:8px 20px;text-decoration:none;border-radius:5px;background:#f0f0f0;color:#333;}
+        .sub-tab.active{background:#8B4513;color:white;}
+        
+        .filter-dropdown{margin-bottom:20px;display:flex;align-items:center;gap:15px;flex-wrap:wrap;}
+        .filter-dropdown label{font-weight:600;color:#8B4513;font-size:14px;}
+        .filter-dropdown select{padding:8px 15px;border:1px solid #ddd;border-radius:5px;font-size:13px;background:white;}
         
         .form-card{background:#f8f9fa;padding:20px;border-radius:8px;margin-bottom:30px;border:1px solid #e0e0e0;}
         .form-row{display:flex;gap:15px;margin-bottom:15px;flex-wrap:wrap;}
@@ -157,6 +203,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
         
         .btn-add{background-color:#2e7d32;color:white;border:none;padding:10px 25px;border-radius:5px;cursor:pointer;font-size:14px;font-weight:600;}
         .btn-add:hover{background-color:#1b5e20;}
+        .btn-remove{background-color:#dc3545;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;}
+        .btn-view{background-color:#17a2b8;color:white;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;font-size:11px;}
+        
+        .data-table{width:100%;border-collapse:collapse;margin-top:15px;}
+        .data-table th{background-color:#8B4513;color:white;padding:12px;text-align:left;}
+        .data-table td{padding:10px;border-bottom:1px solid #eee;}
         
         .success-message{background-color:#d4edda;color:#155724;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;}
         .error-message{background-color:#f8d7da;color:#721c24;padding:10px;border-radius:5px;margin-bottom:15px;text-align:center;}
@@ -172,6 +224,9 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
             .top-bar,.nav-bar,.welcome-section,.content-area{padding-left:20px;padding-right:20px;margin-left:20px;margin-right:20px;}
             .nav-bar{flex-direction:column;gap:10px;}
             .form-row{flex-direction:column;}
+            .data-table{overflow-x:auto;display:block;}
+            .sub-tabs{flex-direction:column;}
+            .filter-dropdown{flex-direction:column;align-items:flex-start;}
         }
     </style>
 </head>
@@ -197,39 +252,99 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_blacklist'])) {
     <p>Blacklist Management - Add students with evidence</p>
 </div>
 <div class="content-area">
-    <div class="content-card">
-        <h2>Add/Update Student on Blacklist</h2>
-        
-        <?php if($message): ?>
-            <div class="<?php echo $messageType; ?>-message"><?php echo $message; ?></div>
-        <?php endif; ?>
-        
-        <div class="form-card">
-            <form method="POST" enctype="multipart/form-data">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Registration Number</label>
-                        <input type="text" name="regNumber" required placeholder="e.g., BscICT-001">
-                    </div>
-                    <div class="form-group">
-                        <label>Student Name</label>
-                        <input type="text" name="studentName" required placeholder="Full name">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Reason for Blacklist</label>
-                    <textarea name="reason" rows="3" required placeholder="Describe the offense/reason for blacklisting"></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Evidence Image (Photo evidence)</label>
-                    <input type="file" name="evidence_image" accept="image/*">
-                    <small style="color:#666; display:block; margin-top:5px;">Upload photo evidence (JPG, PNG, GIF, WEBP). Max 5MB.</small>
-                </div>
-                <button type="submit" name="add_blacklist" class="btn-add">Add/Update Blacklist</button>
-            </form>
-        </div>
-        
+    <?php if($message): ?>
+        <div class="<?php echo $messageType; ?>-message"><?php echo $message; ?></div>
+    <?php endif; ?>
+    
+    <div class="sub-tabs">
+        <a href="blacklist.php" class="sub-tab <?php echo (!$showList) ? 'active' : ''; ?>">Add to Blacklist</a>
+        <a href="blacklist.php?view=list" class="sub-tab <?php echo ($showList) ? 'active' : ''; ?>">Blacklisted Students</a>
     </div>
+    
+    <?php if(!$showList): ?>
+        <div class="content-card">
+            <h2>Add Student to Blacklist</h2>
+            <div class="form-card">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Registration Number</label>
+                            <input type="text" name="regNumber" required placeholder="e.g., BscICT/24/001">
+                        </div>
+                        <div class="form-group">
+                            <label>Student Name</label>
+                            <input type="text" name="studentName" required placeholder="Full name">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Reason for Blacklist</label>
+                        <textarea name="reason" rows="3" required placeholder="Describe the offense/reason for blacklisting"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Evidence Image (Photo evidence)</label>
+                        <input type="file" name="evidence_image" accept="image/*">
+                        <small style="color:#666; display:block; margin-top:5px;">Upload photo evidence (JPG, PNG, GIF, WEBP). Max 5MB.</small>
+                    </div>
+                    <button type="submit" name="add_blacklist" class="btn-add">Add to Blacklist</button>
+                </form>
+            </div>
+        </div>
+    <?php endif; ?>
+    
+    <?php if($showList): ?>
+        <div class="content-card">
+            <h2>Blacklisted Students</h2>
+            
+            <div class="filter-dropdown">
+                <label>Filter by Department:</label>
+                <select id="deptFilter" onchange="window.location.href='blacklist.php?view=list&dept='+this.value">
+                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
+                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
+                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
+                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
+                </select>
+            </div>
+            
+            <?php if(count($blacklistStudents) > 0): ?>
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Reg Number</th>
+                                <th>Student Name</th>
+                                <th>Reason</th>
+                                <th>Evidence</th>
+                                <th>Date Added</th>
+                                <th>Added By</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach($blacklistStudents as $student): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
+                                    <td><?php echo htmlspecialchars($student['studentName']); ?></td>
+                                    <td style="max-width:300px;"><?php echo htmlspecialchars($student['reason']); ?></td>
+                                    <td>
+                                        <?php if(isset($student['evidence_image']) && $student['evidence_image']): ?>
+                                            <a href="../uploads/blacklist/<?php echo $student['evidence_image']; ?>" target="_blank" class="btn-view">View Evidence</a>
+                                        <?php else: ?>
+                                            <span style="color:#999;">No evidence</span>
+                                        <?php endif; ?>
+                                     </td>
+                                    <td><?php echo htmlspecialchars($student['dateAdded']); ?></td>
+                                    <td><?php echo htmlspecialchars($student['addedBy']); ?></td>
+                                    <td><a href="blacklist.php?remove=<?php echo $student['blacklistID']; ?>&view=list&dept=<?php echo $departmentFilter; ?>" class="btn-remove" onclick="return confirm('Remove this student from blacklist?')">Remove</a></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php else: ?>
+                <p>No students in blacklist.</p>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
 </div>
 <div class="footer">
     <div class="footer-content">

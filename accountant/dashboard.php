@@ -1,24 +1,20 @@
 <?php
 session_start();
 
-// Check if user is logged in
 if(!isset($_SESSION['user_id'])) {
     header("Location: ../login.php");
     exit();
 }
 
-// Check if user has correct role
 if($_SESSION['role'] != 'accounts') {
     header("Location: ../login.php");
     exit();
 }
 
 require_once '../config/database.php';
-require_once '../classes/Accountant.php';
 
 $db = new Database();
 
-// Get user data
 $sql = "SELECT name, email, phone FROM users WHERE userID = " . (int)$_SESSION['user_id'];
 $result = $db->query($sql);
 if($result && $result->num_rows > 0) {
@@ -28,108 +24,6 @@ if($result && $result->num_rows > 0) {
 }
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'home';
-$departmentFilter = isset($_GET['dept']) ? $_GET['dept'] : 'all';
-
-// Handle approve/reject actions with auto room assignment
-if($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if(isset($_POST['approve'])) {
-        $studentID = (int)$_POST['studentID'];
-        
-        // Get student's preferred room
-        $prefSql = "SELECT preferredRoomID FROM room_preferences WHERE studentID = $studentID AND status = 'pending'";
-        $prefResult = $db->query($prefSql);
-        
-        if($prefResult && $prefResult->num_rows > 0) {
-            $preference = $prefResult->fetch_assoc();
-            $preferredRoomID = $preference['preferredRoomID'];
-            
-            // Check if room still has available beds
-            $roomSql = "SELECT availableBeds, roomNumber, hostelName FROM rooms WHERE roomID = $preferredRoomID";
-            $roomResult = $db->query($roomSql);
-            $room = $roomResult->fetch_assoc();
-            
-            if($room && $room['availableBeds'] > 0) {
-                // Assign the preferred room
-                $updateRoomSql = "UPDATE rooms SET availableBeds = availableBeds - 1 WHERE roomID = $preferredRoomID";
-                $db->query($updateRoomSql);
-                
-                $updateStudentSql = "UPDATE students SET 
-                                        applicationStatus = 'allocated',
-                                        allocatedRoomID = $preferredRoomID,
-                                        allocatedDate = CURDATE(),
-                                        allocationStatus = 'active'
-                                    WHERE studentID = $studentID";
-                $db->query($updateStudentSql);
-                
-                $updatePrefSql = "UPDATE room_preferences SET status = 'assigned' WHERE studentID = $studentID";
-                $db->query($updatePrefSql);
-                
-                $checkFullSql = "UPDATE rooms SET status = 'full' WHERE roomID = $preferredRoomID AND availableBeds = 0";
-                $db->query($checkFullSql);
-                
-                // Send email notification to student
-                $studentSql = "SELECT u.email, u.name FROM students s JOIN users u ON s.userID = u.userID WHERE s.studentID = $studentID";
-                $studentResult = $db->query($studentSql);
-                $student = $studentResult->fetch_assoc();
-                
-                if($student && $student['email']) {
-                    require_once '../config/mail_config.php';
-                    
-                    $subject = "Room Allocation Confirmation";
-                    $body = "<html><body>
-                             <h2>Hostel Allocation System</h2>
-                             <p>Dear " . $student['name'] . ",</p>
-                             <p>Congratulations! Your room has been allocated.</p>
-                             <p><strong>Room Number:</strong> " . $room['roomNumber'] . "</p>
-                             <p><strong>Hostel:</strong> " . $room['hostelName'] . "</p>
-                             <p>Please visit the Warden's office to collect your room key.</p>
-                             </body></html>";
-                    sendEmail($student['email'], $subject, $body);
-                }
-            } else {
-                // Preferred room is full - student must choose another
-                $updatePrefSql = "UPDATE room_preferences SET status = 'full' WHERE studentID = $studentID";
-                $db->query($updatePrefSql);
-                
-                $accountant = new Accountant();
-                $accountant->login($_SESSION['username'], 'password123');
-                $accountant->verifyFees($studentID);
-                
-                $studentSql = "SELECT u.email, u.name FROM students s JOIN users u ON s.userID = u.userID WHERE s.studentID = $studentID";
-                $studentResult = $db->query($studentSql);
-                $student = $studentResult->fetch_assoc();
-                
-                if($student && $student['email']) {
-                    require_once '../config/mail_config.php';
-                    $subject = "Room Selection Required";
-                    $body = "<html><body>
-                             <h2>Hostel Allocation System</h2>
-                             <p>Dear " . $student['name'] . ",</p>
-                             <p>Your fees have been verified, but your preferred room is now full.</p>
-                             <p>Please log in and select another room.</p>
-                             </body></html>";
-                    sendEmail($student['email'], $subject, $body);
-                }
-            }
-        } else {
-            $accountant = new Accountant();
-            $accountant->login($_SESSION['username'], 'password123');
-            $accountant->verifyFees($studentID);
-        }
-        
-        header("Location: dashboard.php?page=pending&approved=1");
-        exit();
-    }
-    
-    if(isset($_POST['reject'])) {
-        $studentID = (int)$_POST['studentID'];
-        $accountant = new Accountant();
-        $accountant->login($_SESSION['username'], 'password123');
-        $accountant->rejectStudent($studentID);
-        header("Location: dashboard.php?page=pending&rejected=1");
-        exit();
-    }
-}
 
 // Handle profile update
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
@@ -140,10 +34,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     header("Location: dashboard.php?page=profile&updated=1");
     exit();
 }
-
-$profileUpdated = isset($_GET['updated']);
-$approved = isset($_GET['approved']);
-$rejected = isset($_GET['rejected']);
 
 // Handle password change
 $password_message = '';
@@ -182,12 +72,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
                 if($user && $user['email']) {
                     require_once '../config/mail_config.php';
                     $subject = "Password Changed Notification";
-                    $body = "<html><body>
-                             <h2>Hostel Allocation System</h2>
-                             <p>Dear " . $user['name'] . ",</p>
-                             <p>Your password was successfully changed on " . date('Y-m-d H:i:s') . ".</p>
-                             <p>If you did not make this change, please contact the Administrator immediately.</p>
-                             </body></html>";
+                    $body = "<html><body><h2>Hostel Allocation System</h2><p>Dear " . $user['name'] . ",</p><p>Your password was successfully changed on " . date('Y-m-d H:i:s') . ".</p><p>If you did not make this change, please contact the Administrator immediately.</p></body></html>";
                     sendEmail($user['email'], $subject, $body);
                 }
             } else {
@@ -201,74 +86,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
     }
 }
 
-// Function to build department filter WHERE clause
-function getDepartmentFilter($departmentFilter) {
-    if($departmentFilter == 'ict') {
-        return " AND s.regNumber LIKE '%BscICT%'";
-    } elseif($departmentFilter == 'nursing') {
-        return " AND s.regNumber LIKE '%BscNM%'";
-    } elseif($departmentFilter == 'business') {
-        return " AND s.regNumber LIKE '%BscBA%'";
-    }
-    return "";
-}
+$profileUpdated = isset($_GET['updated']);
 
-$departmentWhere = getDepartmentFilter($departmentFilter);
-
-// Get pending students
-$pendingSql = "SELECT s.studentID, s.regNumber, s.program, s.year, s.gender, s.fee_commitment, u.name 
-               FROM students s 
-               JOIN users u ON s.userID = u.userID 
-               WHERE s.applicationStatus = 'pending' $departmentWhere
-               ORDER BY s.studentID";
-$pendingResult = $db->query($pendingSql);
-$pendingStudents = array();
-if($pendingResult) {
-    while($row = $pendingResult->fetch_assoc()) {
-        $pendingStudents[] = $row;
-    }
-}
-
-// Get fee commitment students
-$feeCommitmentSql = "SELECT s.studentID, s.regNumber, s.program, s.year, s.gender, s.fee_commitment_status, s.fee_commitment_note, u.name 
-                     FROM students s 
-                     JOIN users u ON s.userID = u.userID 
-                     WHERE s.fee_commitment = 1 
-                     AND (s.fee_commitment_status = 'pending' OR s.fee_commitment_status IS NULL) $departmentWhere
-                     ORDER BY s.studentID";
-$feeCommitmentResult = $db->query($feeCommitmentSql);
-$feeCommitmentStudents = array();
-if($feeCommitmentResult) {
-    while($row = $feeCommitmentResult->fetch_assoc()) {
-        $feeCommitmentStudents[] = $row;
-    }
-}
-
-// Get verified students
-$verifiedSql = "SELECT s.studentID, s.regNumber, s.program, s.year, s.gender, u.name 
-                FROM students s 
-                JOIN users u ON s.userID = u.userID 
-                WHERE s.applicationStatus = 'approved' $departmentWhere
-                ORDER BY s.studentID";
-$verifiedResult = $db->query($verifiedSql);
-$verifiedStudents = array();
-if($verifiedResult) {
-    while($row = $verifiedResult->fetch_assoc()) {
-        $verifiedStudents[] = $row;
-    }
-}
-
-// Stats
-$totalStudents = 0;
-$totalResult = $db->query("SELECT COUNT(*) as total FROM students");
-if($totalResult) {
-    $row = $totalResult->fetch_assoc();
-    $totalStudents = $row['total'];
-}
-
-$pendingCount = count($pendingStudents);
-$feeCommitmentCount = count($feeCommitmentStudents);
-$verifiedCount = count($verifiedStudents);
+// Get stats
+$totalPaid = $db->query("SELECT COUNT(*) as total FROM paid_students WHERE status = 'active'")->fetch_assoc()['total'];
+$totalAllocated = $db->query("SELECT COUNT(*) as total FROM students WHERE applicationStatus = 'allocated'")->fetch_assoc()['total'];
+$totalStudents = $db->query("SELECT COUNT(*) as total FROM students")->fetch_assoc()['total'];
 ?>
 
 <!DOCTYPE html>
@@ -300,21 +123,6 @@ $verifiedCount = count($verifiedStudents);
         .stat-number{font-size:28px;font-weight:bold;color:#8B4513;}
         .stat-label{font-size:12px;color:#666;margin-top:5px;}
         
-        .filter-dropdown{margin-bottom:20px;display:flex;align-items:center;gap:15px;flex-wrap:wrap;}
-        .filter-dropdown label{font-weight:600;color:#8B4513;font-size:14px;}
-        .filter-dropdown select{padding:8px 15px;border:1px solid #ddd;border-radius:5px;font-size:13px;background:white;}
-        .filter-dropdown select:focus{border-color:#8B4513;outline:none;}
-        
-        .data-table{width:100%;border-collapse:collapse;margin-top:15px;}
-        .data-table th{background-color:#8B4513;color:white;padding:12px;text-align:left;font-size:13px;}
-        .data-table td{padding:10px;border-bottom:1px solid #eee;font-size:13px;}
-        .data-table tr:hover{background-color:#f9f9f9;}
-        
-        .btn-approve{background-color:#2e7d32;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;}
-        .btn-reject{background-color:#c62828;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;}
-        .status-badge{background-color:#e8f5e9;color:#2e7d32;padding:3px 8px;border-radius:4px;display:inline-block;}
-        .fee-badge{background-color:#fff3cd;color:#856404;padding:3px 8px;border-radius:4px;display:inline-block;}
-        
         .profile-field{padding:10px;border-bottom:1px solid #eee;}
         .profile-field label{font-size:12px;color:#666;display:block;margin-bottom:3px;}
         .profile-field p{font-size:15px;font-weight:500;color:#333;}
@@ -337,10 +145,7 @@ $verifiedCount = count($verifiedStudents);
         @media (max-width:768px){
             .top-bar,.nav-bar,.welcome-section,.content-area{padding-left:20px;padding-right:20px;margin-left:20px;margin-right:20px;}
             .nav-bar{flex-direction:column;gap:10px;}
-            .nav-links{justify-content:center;}
             .stats-cards{flex-direction:column;}
-            .data-table{overflow-x:auto;display:block;}
-            .filter-dropdown{flex-direction:column;align-items:flex-start;}
         }
     </style>
 </head>
@@ -353,9 +158,7 @@ $verifiedCount = count($verifiedStudents);
     <div class="university-name">Daeyang University</div>
     <div class="nav-links">
         <a href="?page=home" class="<?php echo ($page=='home')?'active':''; ?>">Home</a>
-        <a href="?page=pending" class="<?php echo ($page=='pending')?'active':''; ?>">Pending Students</a>
-        <a href="?page=fee_commitment" class="<?php echo ($page=='fee_commitment')?'active':''; ?>">Fee Commitment</a>
-        <a href="?page=verified" class="<?php echo ($page=='verified')?'active':''; ?>">Verified Students</a>
+        <a href="paid_list.php?tab=list">Paid List</a>
         <a href="?page=profile" class="<?php echo ($page=='profile')?'active':''; ?>">Profile</a>
         <a href="../logout.php">Logout</a>
     </div>
@@ -367,12 +170,6 @@ $verifiedCount = count($verifiedStudents);
     <?php if($profileUpdated): ?>
         <div class="success-message">Profile updated successfully!</div>
     <?php endif; ?>
-    <?php if($approved): ?>
-        <div class="success-message">Student approved successfully!</div>
-    <?php endif; ?>
-    <?php if($rejected): ?>
-        <div class="success-message">Student rejected successfully!</div>
-    <?php endif; ?>
     
     <!-- HOME PAGE -->
     <?php if($page == 'home'): ?>
@@ -380,161 +177,9 @@ $verifiedCount = count($verifiedStudents);
             <h2>Dashboard Overview</h2>
             <div class="stats-cards">
                 <div class="stat-card"><div class="stat-number"><?php echo $totalStudents; ?></div><div class="stat-label">Total Students</div></div>
-                <div class="stat-card"><div class="stat-number"><?php echo $pendingCount; ?></div><div class="stat-label">Pending Verification</div></div>
-                <div class="stat-card"><div class="stat-number"><?php echo $feeCommitmentCount; ?></div><div class="stat-label">Fee Commitment</div></div>
-                <div class="stat-card"><div class="stat-number"><?php echo $verifiedCount; ?></div><div class="stat-label">Verified Students</div></div>
+                <div class="stat-card"><div class="stat-number"><?php echo $totalPaid; ?></div><div class="stat-label">Paid Students (Active)</div></div>
+                <div class="stat-card"><div class="stat-number"><?php echo $totalAllocated; ?></div><div class="stat-label">Allocated Rooms</div></div>
             </div>
-        </div>
-        
-    <!-- PENDING STUDENTS PAGE -->
-    <?php elseif($page == 'pending'): ?>
-        <div class="content-card">
-            <h2>Pending Students</h2>
-            
-            <div class="filter-dropdown">
-                <label>Filter by Department:</label>
-                <select id="deptFilter" onchange="window.location.href='?page=pending&dept='+this.value">
-                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
-                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
-                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
-                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
-                </select>
-            </div>
-            
-            <?php if(count($pendingStudents) > 0): ?>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Student Name</th>
-                            <th>Program</th>
-                            <th>Year</th>
-                            <th>Gender</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach($pendingStudents as $student): ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars($student['name']); ?></td>
-                            <td><?php echo htmlspecialchars($student['program']); ?></td>
-                            <td><?php echo $student['year']; ?> Year</td>
-                            <td><?php echo $student['gender']; ?></td>
-                            <td>
-                                <form method="POST" style="display:inline;">
-                                    <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
-                                    <button type="submit" name="approve" class="btn-approve" onclick="return confirm('Approve this student?')">Approve</button>
-                                </form>
-                                <form method="POST" style="display:inline;">
-                                    <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
-                                    <button type="submit" name="reject" class="btn-reject" onclick="return confirm('Reject this student?')">Reject</button>
-                                </form>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php else: ?>
-                <p>No pending students found for the selected department.</p>
-            <?php endif; ?>
-        </div>
-        
-    <!-- FEE COMMITMENT PAGE -->
-    <?php elseif($page == 'fee_commitment'): ?>
-        <div class="content-card">
-            <h2>Fee Commitment Students (Added by Registrar)</h2>
-            
-            <div class="filter-dropdown">
-                <label>Filter by Department:</label>
-                <select id="deptFilterFee" onchange="window.location.href='?page=fee_commitment&dept='+this.value">
-                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
-                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
-                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
-                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
-                </select>
-            </div>
-            
-            <?php if(count($feeCommitmentStudents) > 0): ?>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Student Name</th>
-                            <th>Program</th>
-                            <th>Year</th>
-                            <th>Gender</th>
-                            <th>Fee Note</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach($feeCommitmentStudents as $student): ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars($student['name']); ?></td>
-                            <td><?php echo htmlspecialchars($student['program']); ?></td>
-                            <td><?php echo $student['year']; ?> Year</td>
-                            <td><?php echo $student['gender']; ?></td>
-                            <td><?php echo htmlspecialchars($student['fee_commitment_note']); ?></td>
-                            <td><span class="fee-badge">Pending</span></td>
-                            <td>
-                                <form method="POST" style="display:inline;">
-                                    <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
-                                    <button type="submit" name="approve" class="btn-approve" onclick="return confirm('Approve this fee commitment student?')">Approve</button>
-                                </form>
-                                <form method="POST" style="display:inline;">
-                                    <input type="hidden" name="studentID" value="<?php echo $student['studentID']; ?>">
-                                    <button type="submit" name="reject" class="btn-reject" onclick="return confirm('Reject this fee commitment student?')">Reject</button>
-                                </form>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php else: ?>
-                <p>No fee commitment students found for the selected department.</p>
-            <?php endif; ?>
-        </div>
-        
-    <!-- VERIFIED STUDENTS PAGE -->
-    <?php elseif($page == 'verified'): ?>
-        <div class="content-card">
-            <h2>Verified Students</h2>
-            
-            <div class="filter-dropdown">
-                <label>Filter by Department:</label>
-                <select id="deptFilterVerified" onchange="window.location.href='?page=verified&dept='+this.value">
-                    <option value="all" <?php echo ($departmentFilter == 'all') ? 'selected' : ''; ?>>All Departments</option>
-                    <option value="ict" <?php echo ($departmentFilter == 'ict') ? 'selected' : ''; ?>>ICT</option>
-                    <option value="nursing" <?php echo ($departmentFilter == 'nursing') ? 'selected' : ''; ?>>Nursing</option>
-                    <option value="business" <?php echo ($departmentFilter == 'business') ? 'selected' : ''; ?>>Business Administration</option>
-                </select>
-            </div>
-            
-            <?php if(count($verifiedStudents) > 0): ?>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Student Name</th>
-                            <th>Program</th>
-                            <th>Year</th>
-                            <th>Gender</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach($verifiedStudents as $student): ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars($student['name']); ?></td>
-                            <td><?php echo htmlspecialchars($student['program']); ?></td>
-                            <td><?php echo $student['year']; ?> Year</td>
-                            <td><?php echo $student['gender']; ?></td>
-                            <td><span class="status-badge">Approved</span></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php else: ?>
-                <p>No verified students found for the selected department.</p>
-            <?php endif; ?>
         </div>
         
     <!-- PROFILE PAGE -->

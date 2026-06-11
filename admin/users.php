@@ -132,7 +132,7 @@ $error = isset($_GET['error']);
                                 <th>Email</th>
                                 <th>Phone</th>
                                 <th>Role</th>
-                                <th>Action</th>
+                                
                             </tr>
                         </thead>
                         <tbody>
@@ -143,13 +143,7 @@ $error = isset($_GET['error']);
                                 <td><?php echo $user['email'] ?: 'N/A'; ?></td>
                                 <td><?php echo $user['phone'] ?: 'N/A'; ?></td>
                                 <td><span class="role-badge"><?php echo ucfirst($user['role']); ?></span></td>
-                                <td>
-                                    <?php if($user['userID'] != $_SESSION['user_id']): ?>
-                                        <a href="users.php?delete=<?php echo $user['userID']; ?>&user_filter=<?php echo $userFilter; ?>" class="delete-btn" onclick="return confirm('Delete this user?')">Delete</a>
-                                    <?php else: ?>
-                                        <span style="color: #999;">Current</span>
-                                    <?php endif; ?>
-                                </td>
+                                
                             </tr>
                             <?php endforeach; ?>
                         </tbody>

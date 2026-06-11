@@ -39,28 +39,56 @@ if(isset($_GET['approve'])) {
     $request = $requestResult->fetch_assoc();
     
     if($request) {
+        // Update fee_commitment_requests status
         $updateRequestSql = "UPDATE fee_commitment_requests SET status = 'approved', approvedBy = '$registrarName', approvedDate = CURDATE() WHERE requestID = $requestID";
         $db->query($updateRequestSql);
         
+        // Get current semester and academic year
+        $currentSemester = date('n') <= 6 ? 'Semester 1' : 'Semester 2';
+        $currentYear = date('Y');
+        $academic_year = $currentYear . '/' . ($currentYear + 1);
+        
+        // Check if student already exists in paid_students
+        $checkPaidSql = "SELECT * FROM paid_students WHERE regNumber = '{$request['regNumber']}'";
+        $checkPaidResult = $db->query($checkPaidSql);
+        
+        if($checkPaidResult && $checkPaidResult->num_rows == 0) {
+            // Add to paid_students table
+            $insertPaidSql = "INSERT INTO paid_students (regNumber, studentName, semester, academic_year, uploaded_by, uploaded_date, status) 
+                              VALUES ('{$request['regNumber']}', '{$request['studentName']}', '$currentSemester', '$academic_year', 0, CURDATE(), 'active')";
+            $db->query($insertPaidSql);
+        } else {
+            // Update existing record to active
+            $updatePaidSql = "UPDATE paid_students SET status = 'active', semester = '$currentSemester', academic_year = '$academic_year' 
+                              WHERE regNumber = '{$request['regNumber']}'";
+            $db->query($updatePaidSql);
+        }
+        
+        // Calculate expiry date (4 weeks from now)
         $expiryDate = date('Y-m-d', strtotime('+4 weeks'));
+        
+        // Update student record
         $updateStudentSql = "UPDATE students SET 
                                 fee_commitment = 1,
-                                fee_commitment_status = 'pending',
+                                fee_commitment_status = 'approved',
                                 fee_commitment_expiry = '$expiryDate',
-                                applicationStatus = 'pending'
+                                applicationStatus = 'approved',
+                                approved_source = 'fee_commitment'
                              WHERE studentID = " . $request['studentID'];
         $db->query($updateStudentSql);
         
-        // Send email to the contact email provided by student
+        // Send email to student
         if($request['contact_email']) {
             $subject = "Fee Commitment Request Approved";
             $body = "<html><body>
                      <h2>Hostel Allocation System</h2>
                      <p>Dear " . $request['studentName'] . ",</p>
-                     <p>Your fee commitment request has been APPROVED.</p>
+                     <p>Your fee commitment request has been <strong style='color:#2e7d32;'>APPROVED</strong>.</p>
                      <p>You have 4 weeks from today to complete your fee payment.</p>
                      <p><strong>Deadline:</strong> " . $expiryDate . "</p>
-                     <p>Please ensure you pay before the deadline.</p>
+                     <p>You can now log in and select a room.</p>
+                     <p>Please go to the <strong>Select Room</strong> page to choose your preferred room.</p>
+                     <p>Regards,<br>Daeyang University</p>
                      </body></html>";
             sendEmail($request['contact_email'], $subject, $body);
         }
@@ -82,13 +110,22 @@ if(isset($_GET['reject'])) {
         $updateRequestSql = "UPDATE fee_commitment_requests SET status = 'rejected' WHERE requestID = $requestID";
         $db->query($updateRequestSql);
         
+        // Update student record
+        $updateStudentSql = "UPDATE students SET 
+                                fee_commitment = 0,
+                                fee_commitment_status = 'rejected',
+                                applicationStatus = 'pending'
+                             WHERE studentID = " . $request['studentID'];
+        $db->query($updateStudentSql);
+        
         if($request['contact_email']) {
             $subject = "Fee Commitment Request Update";
             $body = "<html><body>
                      <h2>Hostel Allocation System</h2>
                      <p>Dear " . $request['studentName'] . ",</p>
-                     <p>Your fee commitment request has been REJECTED.</p>
+                     <p>Your fee commitment request has been <strong style='color:#c62828;'>REJECTED</strong>.</p>
                      <p>Please contact the Registrar's office for further clarification.</p>
+                     <p>Regards,<br>Daeyang University</p>
                      </body></html>";
             sendEmail($request['contact_email'], $subject, $body);
         }
@@ -101,7 +138,7 @@ if(isset($_GET['reject'])) {
 // Show message from redirect
 if(isset($_GET['msg'])) {
     if($_GET['msg'] == 'approved') {
-        $message = "Fee commitment request approved successfully.";
+        $message = "Fee commitment request approved successfully. Student has been added to paid list and can now select a room.";
         $messageType = "success";
     } elseif($_GET['msg'] == 'rejected') {
         $message = "Fee commitment request rejected.";
@@ -199,10 +236,9 @@ if($approvedResult) {
     <div class="university-name">Daeyang University</div>
     <div class="nav-links">
         <a href="dashboard.php?page=home">Home</a>
-        <a href="dashboard.php?page=pending">Pending Students</a>
         <a href="blacklist.php">Blacklist</a>
         <a href="fee_requests.php" class="active">Fee Requests</a>
-        <a href="dashboard.php?page=approved">Approved Students</a>
+        <a href="reports.php">Reports</a>
         <a href="dashboard.php?page=profile">Profile</a>
         <a href="../logout.php">Logout</a>
     </div>
@@ -249,17 +285,17 @@ if($approvedResult) {
                         </thead>
                         <tbody>
                             <?php foreach($pendingRequests as $request): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($request['studentName']); ?></td>
-                                    <td><?php echo htmlspecialchars($request['regNumber']); ?></td>
-                                    <td><?php echo htmlspecialchars($request['contact_email']); ?></td>
-                                    <td><?php echo $request['requestDate']; ?></td>
-                                    <td class="reason-text"><?php echo nl2br(htmlspecialchars($request['reason'])); ?></td>
-                                    <td>
-                                        <a href="fee_requests.php?approve=<?php echo $request['requestID']; ?>&dept=<?php echo $departmentFilter; ?>" class="btn-approve" onclick="return confirm('Approve this request?')">Approve</a>
-                                        <a href="fee_requests.php?reject=<?php echo $request['requestID']; ?>&dept=<?php echo $departmentFilter; ?>" class="btn-reject" onclick="return confirm('Reject this request?')">Reject</a>
-                                    </td>
-                                </tr>
+                            <tr>
+                                <td><?php echo htmlspecialchars($request['studentName']); ?></td>
+                                <td><?php echo htmlspecialchars($request['regNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($request['contact_email']); ?></td>
+                                <td><?php echo htmlspecialchars($request['requestDate']); ?></td>
+                                <td class="reason-text"><?php echo nl2br(htmlspecialchars($request['reason'])); ?></td>
+                                <td>
+                                    <a href="fee_requests.php?approve=<?php echo $request['requestID']; ?>&dept=<?php echo $departmentFilter; ?>" class="btn-approve" onclick="return confirm('Approve this request? Student will be added to paid list and can select a room.')">Approve</a>
+                                    <a href="fee_requests.php?reject=<?php echo $request['requestID']; ?>&dept=<?php echo $departmentFilter; ?>" class="btn-reject" onclick="return confirm('Reject this request?')">Reject</a>
+                                 </td>
+                            </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
@@ -288,14 +324,14 @@ if($approvedResult) {
                         </thead>
                         <tbody>
                             <?php foreach($approvedRequests as $request): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($request['studentName']); ?></td>
-                                    <td><?php echo htmlspecialchars($request['regNumber']); ?></td>
-                                    <td><?php echo htmlspecialchars($request['contact_email']); ?></td>
-                                    <td><?php echo $request['requestDate']; ?></td>
-                                    <td><?php echo $request['approvedBy']; ?></td>
-                                    <td><?php echo $request['approvedDate']; ?></td>
-                                </tr>
+                            <tr>
+                                <td><?php echo htmlspecialchars($request['studentName']); ?></td>
+                                <td><?php echo htmlspecialchars($request['regNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($request['contact_email']); ?></td>
+                                <td><?php echo htmlspecialchars($request['requestDate']); ?></td>
+                                <td><?php echo htmlspecialchars($request['approvedBy']); ?></td>
+                                <td><?php echo htmlspecialchars($request['approvedDate']); ?></td>
+                            </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>

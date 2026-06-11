@@ -80,51 +80,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_user'])) {
     }
 }
 
-// Handle edit user
-if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_user'])) {
-    $editID = (int)$_POST['edit_id'];
-    $name = $_POST['name'];
-    $email = $_POST['email'];
-    $phone = $_POST['phone'];
-    $db->query("UPDATE users SET name='$name', email='$email', phone='$phone' WHERE userID = $editID");
-    $editSuccess = "User updated successfully!";
-}
-
-// Handle reset password
-if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_password'])) {
-    $resetID = (int)$_POST['reset_id'];
-    $newPassword = $_POST['new_password'];
-    $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-    $db->query("UPDATE users SET password='$hashedPassword' WHERE userID = $resetID");
-    $resetSuccess = "Password reset successfully! New password: $newPassword";
-}
-
-// Handle delete user
-if(isset($_GET['delete_user'])) {
-    $userID = (int)$_GET['delete_user'];
-    if($userID != $_SESSION['user_id']) {
-        $db->query("DELETE FROM users WHERE userID = $userID");
-        $userDeleted = true;
-    } else {
-        $userError = "You cannot delete your own account!";
-    }
-}
-
-// Get rooms with occupancy info
-$hostels = ['Eswanthini', 'Seychells', 'Namibia', 'Botswana', 'Lesotho'];
-$rooms = [];
-
-$roomWhere = "";
-if($selectedHostel) {
-    $roomWhere = " WHERE hostelName = '$selectedHostel'";
-}
-$roomResult = $db->query("SELECT *, (capacity - availableBeds) as occupiedBeds FROM rooms $roomWhere ORDER BY hostelName, roomNumber");
-if($roomResult) {
-    while($row = $roomResult->fetch_assoc()) {
-        $rooms[] = $row;
-    }
-}
-
 // Get users for manage users
 $userFilter = isset($_GET['user_filter']) ? $_GET['user_filter'] : 'all';
 $studentProgramFilter = isset($_GET['student_program']) ? $_GET['student_program'] : '';
@@ -142,7 +97,6 @@ $users = [];
 $uResult = $db->query("SELECT userID, username, name, email, phone, role FROM users $userWhere ORDER BY role, name");
 if($uResult) {
     while($row = $uResult->fetch_assoc()) {
-        // For students, get program from students table
         if($row['role'] == 'student') {
             $studentSql = "SELECT program FROM students WHERE userID = " . $row['userID'];
             $studentResult = $db->query($studentSql);
@@ -159,7 +113,6 @@ if($uResult) {
     }
 }
 
-// Filter students by program if filter is applied
 if($userFilter == 'students' && $studentProgramFilter) {
     $filteredUsers = [];
     foreach($users as $user) {
@@ -178,6 +131,21 @@ $sResult = $db->query("SELECT s.*, u.name FROM students s JOIN users u ON s.user
 if($sResult) {
     while($row = $sResult->fetch_assoc()) {
         $allStudents[] = $row;
+    }
+}
+
+// Get rooms with occupancy info
+$hostels = ['Eswanthini', 'Seychells', 'Namibia', 'Botswana', 'Lesotho'];
+$rooms = [];
+
+$roomWhere = "";
+if($selectedHostel) {
+    $roomWhere = " WHERE hostelName = '$selectedHostel'";
+}
+$roomResult = $db->query("SELECT *, (capacity - availableBeds) as occupiedBeds FROM rooms $roomWhere ORDER BY hostelName, roomNumber");
+if($roomResult) {
+    while($row = $roomResult->fetch_assoc()) {
+        $rooms[] = $row;
     }
 }
 ?>
@@ -226,18 +194,12 @@ if($sResult) {
         .form-group input,.form-group select{width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;}
         .btn-add{background:#8B4513;color:white;border:none;padding:8px 20px;border-radius:4px;cursor:pointer;}
         .btn-delete{background:#8B4513;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;}
-        .btn-edit{background:#ffc107;color:#333;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;margin-right:5px;}
-        .btn-reset{background:#17a2b8;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;margin-right:5px;}
         .submit-btn{background:#8B4513;color:white;border:none;padding:8px 20px;border-radius:4px;cursor:pointer;}
         .success-message{background:#d4edda;color:#155724;padding:10px;border-radius:4px;margin-bottom:15px;text-align:center;}
         .error-message{background:#f8d7da;color:#721c24;padding:10px;border-radius:4px;margin-bottom:15px;text-align:center;}
         .profile-field{padding:10px 0;border-bottom:1px solid #eee;}
         .profile-field label{font-size:12px;color:#888;display:block;}
         .profile-field p{font-size:15px;font-weight:500;color:#333;}
-        .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.5);}
-        .modal-content{background:white;margin:10% auto;padding:25px;border-radius:8px;width:400px;max-width:90%;}
-        .modal-content h3{color:#8B4513;margin-bottom:20px;}
-        .modal-content .close{float:right;font-size:24px;cursor:pointer;}
         .footer{background:#8B4513;color:white;padding:25px 40px;margin-top:20px;text-align:center;}
         @media(max-width:768px){.top-bar,.nav-bar,.welcome-section,.content-area{padding-left:20px;padding-right:20px;}.nav-bar{flex-direction:column;}.stats-cards{flex-direction:column;}.export-buttons{justify-content:flex-start;}}
     </style>
@@ -374,17 +336,8 @@ if($sResult) {
         <?php if(isset($userSuccess)): ?>
             <div class="success-message"><?php echo $userSuccess; ?></div>
         <?php endif; ?>
-        <?php if(isset($userDeleted)): ?>
-            <div class="success-message">User deleted successfully!</div>
-        <?php endif; ?>
         <?php if(isset($userError)): ?>
             <div class="error-message"><?php echo $userError; ?></div>
-        <?php endif; ?>
-        <?php if(isset($editSuccess)): ?>
-            <div class="success-message"><?php echo $editSuccess; ?></div>
-        <?php endif; ?>
-        <?php if(isset($resetSuccess)): ?>
-            <div class="success-message"><?php echo $resetSuccess; ?></div>
         <?php endif; ?>
         
         <div class="sub-tabs">
@@ -449,7 +402,6 @@ if($sResult) {
                 <?php endif; ?>
             </div>
             
-            <!-- Program Filter - Only shows when Students is selected -->
             <?php if($userFilter == 'students'): ?>
                 <div class="filter-bar" style="margin-top: -10px;">
                     <label>Filter by Program:</label>
@@ -477,7 +429,6 @@ if($sResult) {
                             <?php if($userFilter == 'students'): ?>
                                 <th>Program</th>
                             <?php endif; ?>
-                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -487,19 +438,10 @@ if($sResult) {
                             <td><?php echo htmlspecialchars($user['name']); ?></td>
                             <td><?php echo $user['email'] ?: 'N/A'; ?></td>
                             <td><?php echo $user['phone'] ?: 'N/A'; ?></td>
-                            <td><?php echo ucfirst($user['role']); ?></tr>
+                            <td><?php echo ucfirst($user['role']); ?></td>
                             <?php if($userFilter == 'students'): ?>
                                 <td><?php echo $user['program']; ?></td>
                             <?php endif; ?>
-                            <td>
-                                <?php if($user['userID'] != $_SESSION['user_id']): ?>
-                                    <button onclick="openEditModal(<?php echo $user['userID']; ?>, '<?php echo htmlspecialchars($user['name']); ?>', '<?php echo htmlspecialchars($user['email']); ?>', '<?php echo htmlspecialchars($user['phone']); ?>')" class="btn-edit">Edit</button>
-                                    <button onclick="openResetModal(<?php echo $user['userID']; ?>, '<?php echo htmlspecialchars($user['username']); ?>')" class="btn-reset">Reset Pwd</button>
-                                    <a href="?page=users&delete_user=<?php echo $user['userID']; ?>&user_filter=<?php echo $userFilter; ?>&student_program=<?php echo $studentProgramFilter; ?>" class="btn-delete" onclick="return confirm('Delete this user?')">Delete</a>
-                                <?php else: ?>
-                                    <span style="color:#999;">Current</span>
-                                <?php endif; ?>
-                            </td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -512,14 +454,12 @@ if($sResult) {
 
 <?php elseif($page == 'profile'): ?>
     <?php
-    // Handle profile update
     if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
         $phone = $_POST['phone'];
         $email = $_POST['email'];
         $db->query("UPDATE users SET phone='$phone', email='$email' WHERE userID={$_SESSION['user_id']}");
         echo '<div class="success-message">Profile updated successfully!</div>';
     }
-    // Handle password change
     if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['change_password'])) {
         $current = $_POST['current_password'];
         $new = $_POST['new_password'];
@@ -596,60 +536,7 @@ if($sResult) {
         document.getElementById('hostelField').style.display = role == 'warden' ? 'block' : 'none';
         document.getElementById('officeField').style.display = role == 'registrar' ? 'block' : 'none';
     }
-    
-    function openEditModal(id, name, email, phone) {
-        document.getElementById('edit_id').value = id;
-        document.getElementById('edit_name').value = name;
-        document.getElementById('edit_email').value = email;
-        document.getElementById('edit_phone').value = phone;
-        document.getElementById('editModal').style.display = 'block';
-    }
-    
-    function closeEditModal() { document.getElementById('editModal').style.display = 'none'; }
-    
-    function openResetModal(id, username) {
-        document.getElementById('reset_id').value = id;
-        document.getElementById('reset_username').value = username;
-        document.getElementById('resetModal').style.display = 'block';
-    }
-    
-    function closeResetModal() { document.getElementById('resetModal').style.display = 'none'; }
-    
-    window.onclick = function(event) {
-        if (event.target == document.getElementById('editModal')) closeEditModal();
-        if (event.target == document.getElementById('resetModal')) closeResetModal();
-    }
 </script>
-
-<!-- Edit User Modal -->
-<div id="editModal" class="modal">
-    <div class="modal-content">
-        <span class="close" onclick="closeEditModal()">&times;</span>
-        <h3>Edit User</h3>
-        <form method="POST">
-            <input type="hidden" name="edit_id" id="edit_id">
-            <div class="form-group"><label>Full Name</label><input type="text" name="name" id="edit_name" required></div>
-            <div class="form-group"><label>Email</label><input type="email" name="email" id="edit_email" required></div>
-            <div class="form-group"><label>Phone</label><input type="text" name="phone" id="edit_phone" required></div>
-            <button type="submit" name="edit_user" class="btn-add">Save Changes</button>
-        </form>
-    </div>
-</div>
-
-<!-- Reset Password Modal -->
-<div id="resetModal" class="modal">
-    <div class="modal-content">
-        <span class="close" onclick="closeResetModal()">&times;</span>
-        <h3>Reset Password</h3>
-        <form method="POST">
-            <input type="hidden" name="reset_id" id="reset_id">
-            <div class="form-group"><label>User</label><input type="text" id="reset_username" readonly style="background:#f5f5f5;"></div>
-            <div class="form-group"><label>New Password</label><input type="text" name="new_password" required value="password123"></div>
-            <p style="font-size:12px; color:#666;">Default: <strong>password123</strong></p>
-            <button type="submit" name="reset_password" class="btn-add">Reset Password</button>
-        </form>
-    </div>
-</div>
 
 <div class="footer">
     <div>&copy; <?php echo date('Y'); ?> Daeyang University. All rights reserved.</div>

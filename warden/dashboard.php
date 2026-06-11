@@ -338,7 +338,6 @@ if($reportResult) {
             window.location.href = 'dashboard.php?page=reports';
         }
         
-        // Tab switching for Allocated Students page
         function showAllocatedTab() {
             document.getElementById('allocatedTabContent').style.display = 'block';
             document.getElementById('availableTabContent').style.display = 'none';
@@ -407,7 +406,7 @@ if($reportResult) {
                 <a href="javascript:void(0)" id="availableTabBtn" onclick="showAvailableTab()" class="sub-tab <?php echo ($availableTab) ? 'active' : ''; ?>">Available Rooms</a>
             </div>
             
-            <!-- TAB 1: Allocated Students (Existing content) -->
+            <!-- TAB 1: Allocated Students (with Reg Number column) -->
             <div id="allocatedTabContent" style="display: <?php echo (!$availableTab) ? 'block' : 'none'; ?>;">
                 <div class="filter-bar">
                     <div class="filter-group">
@@ -436,8 +435,8 @@ if($reportResult) {
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th>Student Name</th>
                                     <th>Reg Number</th>
+                                    <th>Student Name</th>
                                     <th>Program</th>
                                     <th>Year</th>
                                     <th>Gender</th>
@@ -449,8 +448,8 @@ if($reportResult) {
                             <tbody>
                                 <?php foreach($allocatedStudents as $student): ?>
                                 <tr>
-                                    <td><?php echo htmlspecialchars($student['studentName']); ?></td>
                                     <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
+                                    <td><?php echo htmlspecialchars($student['studentName']); ?></td>
                                     <td><?php echo htmlspecialchars($student['program']); ?></td>
                                     <td><?php echo htmlspecialchars($student['year']); ?> Year</td>
                                     <td><?php echo htmlspecialchars($student['gender']); ?></td>
@@ -467,9 +466,8 @@ if($reportResult) {
                 <?php endif; ?>
             </div>
             
-            <!-- TAB 2: Available Rooms (NEW FEATURE) -->
+            <!-- TAB 2: Available Rooms -->
             <div id="availableTabContent" style="display: <?php echo ($availableTab) ? 'block' : 'none'; ?>;">
-                <!-- Hostel Filter Dropdown -->
                 <div class="filter-bar">
                     <div class="filter-group">
                         <label>Select Hostel:</label>
@@ -515,7 +513,6 @@ if($reportResult) {
                         </table>
                     </div>
                     
-                    <!-- Summary Box -->
                     <div class="summary-box">
                         <strong>Summary for <?php echo $availableHostel; ?> Hostel:</strong><br>
                         <?php echo $roomsWithBeds; ?> room(s) have available beds<br>
@@ -527,7 +524,7 @@ if($reportResult) {
             </div>
         </div>
         
-    <!-- REPORTS PAGE -->
+    <!-- REPORTS PAGE (with Reg Number column) -->
     <?php elseif($page == 'reports'): ?>
         <div class="content-card">
             <h2>Allocated Students Reports</h2>
@@ -573,8 +570,8 @@ if($reportResult) {
                     <table class="data-table" id="reportTable">
                         <thead>
                             <tr>
-                                <th>Student Name</th>
                                 <th>Reg Number</th>
+                                <th>Student Name</th>
                                 <th>Program</th>
                                 <th>Year</th>
                                 <th>Gender</th>
@@ -586,8 +583,8 @@ if($reportResult) {
                         <tbody>
                             <?php foreach($reportStudents as $student): ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($student['studentName']); ?></td>
                                 <td><?php echo htmlspecialchars($student['regNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($student['studentName']); ?></td>
                                 <td><?php echo htmlspecialchars($student['program']); ?></td>
                                 <td><?php echo htmlspecialchars($student['year']); ?> Year</td>
                                 <td><?php echo htmlspecialchars($student['gender']); ?></td>
@@ -604,7 +601,7 @@ if($reportResult) {
             <?php endif; ?>
         </div>
         
-    <!-- CLEARANCE REQUESTS PAGE -->
+    <!-- CLEARANCE REQUESTS PAGE (already has Reg Number) -->
     <?php elseif($page == 'clearance'): ?>
         <?php
         $clearanceSql = "SELECT c.*, s.regNumber, u.name as studentName, s.program, s.year, r.roomNumber, r.hostelName 
@@ -629,8 +626,8 @@ if($reportResult) {
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Student Name</th>
                                 <th>Reg Number</th>
+                                <th>Student Name</th>
                                 <th>Room Number</th>
                                 <th>Hostel</th>
                                 <th>Request Date</th>
@@ -640,18 +637,18 @@ if($reportResult) {
                         <tbody>
                             <?php foreach($clearanceRequests as $request): ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($request['studentName']); ?></td>
                                 <td><?php echo htmlspecialchars($request['regNumber']); ?></td>
+                                <td><?php echo htmlspecialchars($request['studentName']); ?></td>
                                 <td><?php echo htmlspecialchars($request['roomNumber']); ?></td>
                                 <td><?php echo htmlspecialchars($request['hostelName']); ?></td>
-                                <td><?php echo $request['requestDate']; ?></td>
+                                <td><?php echo htmlspecialchars($request['requestDate']); ?></td>
                                 <td>
                                     <form method="POST" action="process_clearance.php" style="display:inline;">
                                         <input type="hidden" name="clearanceID" value="<?php echo $request['clearanceID']; ?>">
                                         <button type="submit" name="action" value="approve" class="btn-export" style="background-color:#28a745;" onclick="return confirm('Approve this clearance request?')">Approve</button>
                                         <button type="submit" name="action" value="reject" class="btn-export" style="background-color:#dc3545;" onclick="return confirm('Reject this clearance request?')">Reject</button>
                                     </form>
-                                </td>
+                                 </td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
